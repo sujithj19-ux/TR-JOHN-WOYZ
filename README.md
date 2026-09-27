@@ -12,9 +12,16 @@ Preserves the main app, personal worklist, mobile/desktop workflows and PWA asse
 - Firebase Web app: registered and configured for trjohn-woyz.
 - Firestore: default database created in asia-south1 (Mumbai), deletion protection enabled; rules deployed successfully.
 - Email/password Authentication: enabled. Initial users must be created under Firebase Authentication > Users.
-- Single-user workflow: no master administration, user groups, mapped accounts, or cross-account queries. The worklist at admin.html displays only the signed-in account’s notes.
+- Single-user workflow: no master administration, user groups, mapped accounts, or cross-account queries. The default worklist at index.html displays only the signed-in account’s notes.
 - Firestore permits each authenticated account to access only its own profile and notes; all group and cross-account access is denied.
 - Email delivery: disabled because the handover does not include its backend. The original email service is disconnected.
 - Voice generation: retains the original Gemini integration and requires the user's Gemini API key in app settings.
 
 Deploy subsequent rule updates with `firebase deploy --only firestore:rules --project trjohn-woyz`. Hosting configuration is included if Firebase Hosting is selected.
+
+## Pages
+
+- `index.html` (site root): personal worklist, formerly admin.html.
+- `user.html`: notes editor, formerly index.html.
+- Use the Settings menu to switch between the worklist and notes editor.
+- Firebase Hosting redirects old admin URLs to the site root when hosting is deployed.

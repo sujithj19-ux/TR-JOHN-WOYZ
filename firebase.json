@@ -12,6 +12,18 @@
       "**/*.sh",
       "**/node_modules/**"
     ],
-    "cleanUrls": true
+    "cleanUrls": true,
+    "redirects": [
+      {
+        "source": "/admin.html",
+        "destination": "/",
+        "type": 301
+      },
+      {
+        "source": "/admin",
+        "destination": "/",
+        "type": 301
+      }
+    ]
   }
 }

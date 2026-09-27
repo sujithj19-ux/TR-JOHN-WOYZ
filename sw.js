@@ -1,8 +1,8 @@
-const CACHE_NAME = 'trjohn-woyz-v2';
+const CACHE_NAME = 'trjohn-woyz-v3';
 const APP_SHELL = [
   './',
   './index.html',
-  './admin.html',
+  './user.html',
   './demo.html',
   './firebase-config.js',
   './manifest.webmanifest',
@@ -35,14 +35,23 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
+    const base = new URL('./', self.location.href);
+    const relativePath = url.pathname.slice(base.pathname.length);
+    const page = !relativePath || relativePath === 'index' || relativePath === 'index.html'
+      ? './index.html'
+      : relativePath === 'user' || relativePath === 'user.html'
+        ? './user.html'
+        : relativePath === 'demo' || relativePath === 'demo.html' ? './demo.html' : null;
     event.respondWith(
       fetch(request)
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
+          if (response.ok && page) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(page, copy));
+          }
           return response;
         })
-        .catch(() => caches.match('./index.html'))
+        .catch(async () => (page && await caches.match(page)) || Response.error())
     );
     return;
   }

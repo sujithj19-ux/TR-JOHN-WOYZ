@@ -6416,6 +6416,7 @@ function closeContinuationDock({releaseMic = true, preserveNewDraftCancel = fals
 async function closeVoiceDraftWithConfirmation(){
   if (continuationState.mode !== 'new'){
     closeContinuationDock();
+    openHomeForSelectedDate();
     return;
   }
   if (!window.confirm('Close and delete this draft note?')) return;
@@ -6424,11 +6425,13 @@ async function closeVoiceDraftWithConfirmation(){
     continuationState.cancelNewDraft = true;
     pendingNewVoiceDockId = null;
     closeContinuationDock({preserveNewDraftCancel:true});
+    openHomeForSelectedDate();
     return;
   }
   draft.cancelProcessing = true;
   pendingNewVoiceDockId = null;
   closeContinuationDock();
+  openHomeForSelectedDate();
   try{
     await persistRecord(draft,{
       deleted:true,
@@ -6440,12 +6443,7 @@ async function closeVoiceDraftWithConfirmation(){
     allRecords = allRecords.filter(record => !recordMatchesOwnerAndId(record, noteOwnerUid(draft), draft.firestoreId));
     activeIndex = null;
     renderEntries();
-    if (window.matchMedia('(max-width:600px)').matches) showMobileHomeScreen();
-    else if (records.length){
-      if (!openDefaultOpView()) selectEntry(0);
-    }else{
-      showEmptyDate(selectedVisitType === 'IP' ? 'No active IP notes for this date.' : `No ${selectedVisitType} notes saved for this date.`);
-    }
+    showMobileHomeScreen();
   }catch(error){
     console.error('Draft delete failed:', error);
     window.alert('Unable to delete this draft. Please try again.');
@@ -8508,7 +8506,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=25', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=26', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

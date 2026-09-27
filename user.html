@@ -3164,9 +3164,9 @@ function previousPatientNotes(draft){
 function previousPatientNotesHtml(draft){
   const history = previousPatientNotes(draft);
   if (!history.length) return '';
-  return `<h2 class="patient-history-heading">Previous notes · newest first</h2>` + history.map(record => `
+  return history.map(record => `
     <article class="op-all-entry">
-      <h3 class="op-all-entry-title">${escapeHtml(record.visitDate || '')} · ${escapeHtml(timelineTitleForRecord(record))}</h3>
+      <h3 class="op-all-entry-title">${escapeHtml(formatVisitDateLabel(record.visitDate))}</h3>
       <div class="note-editor" role="region" aria-label="Previous note from ${escapeHtml(record.visitDate || '')}">${richNoteHtml(displayNoteTextForRecord(record, record.transcription || ''))}</div>
     </article>
   `).join('');
@@ -3184,11 +3184,12 @@ function ipTimelineRecordsForKey(key){
 }
 
 function reviewDateFromTimestampLabel(label, fallbackDate){
-  const match = String(label || '').match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  const match = String(label || '').match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4}|\d{2})(?!\d)/);
   if (!match) return fallbackDate;
   const day = match[1].padStart(2, '0');
   const month = match[2].padStart(2, '0');
-  return `${match[3]}-${month}-${day}`;
+  const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+  return `${year}-${month}-${day}`;
 }
 
 function reviewTimestampMillis(label, fallbackDate, index = 0){
@@ -3456,16 +3457,22 @@ function recordMatchesSearch(record){
 }
 
 function timelineTitleForRecord(record){
-  const mode = normalizedEntryMode(record);
-  const dateText = formatVisitDateLabel(record?.visitDate || dateInputValue(selectedVisitDate));
-  const timeText = record?.createdAt ? String(record.createdAt).split(',').slice(1).join(',').trim() : '';
-  return `${mode} - ${dateText}${timeText ? `, ${timeText}` : ''}`;
+  return formatVisitDateLabel(record?.visitDate || dateInputValue(selectedVisitDate));
 }
 
 function formatVisitDateLabel(value){
-  const [year,month,day] = String(value || '').split('-').map(Number);
-  if (!year || !month || !day) return value || 'Undated';
-  return new Date(year, month - 1, day).toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1].slice(-2)}` : value || 'Undated';
+}
+
+function compactReviewHeadingDates(text){
+  return String(text || '').replace(/(Review Note\s*\()(\d{1,2})[\/-](\d{1,2})[\/-](\d{4}|\d{2})(?:,[^)]*)?(\):)/gi,
+    (_match, prefix, day, month, year, suffix) => `${prefix}${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year.slice(-2)}${suffix}`);
+}
+
+function isEmptyCarriedReview(record){
+  return Boolean((record?.sourcePatientKey || record?.sourceNoteId)
+    && /^(?:Review Note(?:\s*\([^)]*\))?:)?\s*$/i.test(String(record.transcription || '').trim()));
 }
 
 function fullVisitDateLabel(value){
@@ -4883,7 +4890,7 @@ function organizeIpReviewNotes(text){
 
 function displayNoteTextForRecord(record, text){
   const formatted = formatStoredReviewNotes(text);
-  return noteVisitType(record) === 'IP' ? organizeIpReviewNotes(formatted) : formatted;
+  return compactReviewHeadingDates(noteVisitType(record) === 'IP' ? organizeIpReviewNotes(formatted) : formatted);
 }
 
 function simpleRichNoteHtml(text){
@@ -5756,23 +5763,24 @@ function renderVoiceWorkspace(){
 function renderGeneratedNote(draft){
   setMobileBottomActionsVisible(true);
   const title = draft.selectedMode || 'Visit Note';
+  const hideEmptyReview = isEmptyCarriedReview(draft);
   const displayText = anonymizeTextForRecord(displayNoteTextForRecord(draft, draft.transcription), draft);
   const canEdit = !anonymizeEnabled;
   mainScroll.innerHTML = `
     <div class="generated-note">
       <section class="generated-note-card">
-        <div class="generated-note-head">
+        ${hideEmptyReview ? '' : `<div class="generated-note-head">
           <div>
             <h1 class="generated-note-title">${escapeHtml(title)}</h1>
           </div>
         </div>
-        <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${richNoteHtml(displayText)}</div>
+        <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${richNoteHtml(displayText)}</div>`}
         <section id="previousPatientNotes" aria-label="Previous patient notes">${previousPatientNotesHtml(draft)}</section>
       </section>
     </div>`;
   const editor = document.getElementById('generatedNoteEditor');
   resizeNoteEditor(editor);
-  if (canEdit){
+  if (canEdit && editor){
     ['focus','keyup','mouseup','touchend'].forEach(eventName => {
       editor.addEventListener(eventName, captureEditorSelection);
     });
@@ -6543,7 +6551,7 @@ function appendTextToRecord(record, text, {review = false, scrollToAppended = fa
   const editor = document.getElementById('generatedNoteEditor');
   const editorMatchesTarget = editor?.dataset?.noteId === record.firestoreId && editor?.dataset?.noteOwner === targetOwnerUid;
   const existing = editor && editorMatchesTarget ? editorPlainText(editor) : record.transcription;
-  const baseText = String(existing || '').trimEnd();
+  const baseText = isEmptyCarriedReview(record) ? '' : String(existing || '').trimEnd();
   const heading = review
     ? `Review Note (${reviewTimestampLabel()}):`
     : '';
@@ -8374,7 +8382,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=15', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=16', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

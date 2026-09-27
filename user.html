@@ -2128,6 +2128,12 @@
     body.mobile-typing .note-editor,
     body.mobile-typing [contenteditable="true"]{ scroll-margin-bottom:100px; }
   }
+  .sidebar-entry-row{ display:flex; align-items:stretch; position:relative; gap:4px; }
+  .sidebar-entry-row > .entry{ flex:1; min-width:0; }
+  .entry-more{ align-self:center; width:36px; min-height:44px; border:0; background:transparent; color:var(--muted); font-size:24px; cursor:pointer; border-radius:8px; }
+  .entry-delete-menu{ display:none; position:absolute; right:4px; top:44px; z-index:100; width:230px; max-width:95%; padding:6px; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 24px #0002; }
+  .entry-delete-menu.open{ display:block; }
+  .entry-delete-menu button{ width:100%; min-height:44px; padding:10px; border:0; background:#fff; color:#b42318; text-align:left; font:600 13px 'Inter',sans-serif; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -2494,7 +2500,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import { browserLocalPersistence, getAuth, onAuthStateChanged, setPersistence, signInAnonymously, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, writeBatch, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firebaseConfig, isAllowedUser } from './firebase-config.js';
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -2875,6 +2881,88 @@ To,
 
 Thank you`;
 
+let deletingSidebarEntry = false;
+function closeEntryMenus(){
+  entryList.querySelectorAll('.entry-delete-menu.open').forEach(menu => menu.classList.remove('open'));
+  entryList.querySelectorAll('.entry-more').forEach(button => button.setAttribute('aria-expanded','false'));
+}
+function appendSidebarEntry(entryButton, targetRecords){
+  const entryDate = dateInputValue(selectedVisitDate);
+  const row = document.createElement('div');
+  row.className = 'sidebar-entry-row';
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'entry-more';
+  more.textContent = '⋮';
+  more.setAttribute('aria-label','Entry options');
+  more.setAttribute('aria-haspopup','true');
+  more.setAttribute('aria-expanded','false');
+  const menu = document.createElement('div');
+  menu.className = 'entry-delete-menu';
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.textContent = 'Delete';
+  remove.disabled = deletingSidebarEntry;
+  more.addEventListener('click', event => {
+    event.stopPropagation();
+    const open = !menu.classList.contains('open');
+    closeEntryMenus();
+    menu.classList.toggle('open',open);
+    more.setAttribute('aria-expanded',String(open));
+    if (open) remove.focus();
+  });
+  remove.addEventListener('click', event => { event.stopPropagation(); closeEntryMenus(); deleteSidebarEntry(targetRecords, entryDate); });
+  menu.appendChild(remove);
+  row.append(entryButton,more,menu);
+  entryList.appendChild(row);
+}
+document.addEventListener('click', closeEntryMenus);
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeEntryMenus(); });
+
+async function deleteSidebarEntry(targetRecords, date){
+  if (!currentUser || deletingSidebarEntry) return;
+  if (continuationState.hasStarted || continuationState.processing || records.some(record => record.recording || record.transcribing)){
+    window.alert('Finish or cancel the active recording before deleting this entry.');
+    return;
+  }
+  const ownerUid = currentUser.uid;
+  const targetIds = new Set(targetRecords.filter(record => noteOwnerUid(record) === ownerUid && record.visitDate === date).map(record => record.firestoreId).filter(Boolean));
+  if (!targetIds.size) { window.alert(`This entry has no notes for ${date}.`); return; }
+  deletingSidebarEntry = true;
+  let deletedCount = 0;
+  try{
+    const snapshot = await getDocs(query(collection(db,'users',ownerUid,'notes'),where('visitDate','==',date)));
+    const entries = snapshot.docs.filter(item => targetIds.has(item.id) && item.data().visitDate === date && item.data().deleted !== true && noteVisitType(item.data()) === 'OP');
+    if (!entries.length){ window.alert(`This entry has no notes to delete for ${date}.`); return; }
+    if (!window.confirm(`Move this entry’s ${entries.length} note(s) for ${date} to Trash? Other entries and previous dates will not be deleted. You can restore these notes for 30 days.`)) return;
+    if (currentUser?.uid !== ownerUid) return;
+    const ids = new Set(entries.map(item => item.id));
+    records.filter(record => ids.has(record.firestoreId)).forEach(record => { record.cancelProcessing = true; });
+    if (ids.has(continuationState.targetId)) { closeContinuationDock(); pendingNewVoiceDockId = null; }
+    for (let offset = 0; offset < entries.length; offset += 450){
+      const batch = writeBatch(db);
+      const chunk = entries.slice(offset, offset + 450);
+      chunk.forEach(item => batch.update(item.ref, {deleted:true,deletedAt:serverTimestamp(),deletedBy:ownerUid,updatedAt:serverTimestamp()}));
+      await batch.commit();
+      deletedCount += chunk.length;
+    }
+    if (currentUser?.uid === ownerUid && dateInputValue(selectedVisitDate) === date){
+      clearTimelineSelection();
+      activeIndex = null;
+      searchScope = 'today';
+      updateSearchScopeToggle();
+      subscribeToSelectedDate();
+      showEmptyDate('Entry moved to Trash. Select another entry.');
+    }
+    window.alert(`Moved ${deletedCount} note(s) from this entry for ${date} to Trash.`);
+  }catch(error){
+    window.alert(`Could not finish deleting this entry for ${date}. ${deletedCount} entries were moved to Trash. Check your connection and try again.`);
+  }finally{
+    deletingSidebarEntry = false;
+    renderEntries();
+  }
+}
+
 function renderEntries(){
   if (searchScope === 'all'){
     renderAllPatientEntries();
@@ -2931,7 +3019,7 @@ function renderTodayEntries(){
       selectEntry(i);
       closeMobileSidebar();
     });
-    entryList.appendChild(btn);
+    appendSidebarEntry(btn, [r]);
   });
 }
 
@@ -2992,7 +3080,7 @@ function renderOpPatientEntries(){
       selectEntry(i);
       closeMobileSidebar();
     });
-    entryList.appendChild(btn);
+    appendSidebarEntry(btn, [r]);
   });
   groups.forEach((group, index) => {
     const latest = group.latest || group.records[0];
@@ -3016,7 +3104,7 @@ function renderOpPatientEntries(){
       renderEntries();
       closeMobileSidebar();
     });
-    entryList.appendChild(btn);
+    appendSidebarEntry(btn, group.todayRecords);
   });
 }
 
@@ -3317,7 +3405,7 @@ function renderAllPatientEntries(){
       renderPatientTimeline(group.key);
       closeMobileSidebar();
     });
-    entryList.appendChild(btn);
+    appendSidebarEntry(btn, group.records.filter(record => record.visitDate === dateInputValue(selectedVisitDate)));
   });
 }
 
@@ -8256,7 +8344,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=13', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=14', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

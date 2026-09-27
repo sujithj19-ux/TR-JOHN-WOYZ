@@ -2153,6 +2153,15 @@
   .output-section-check{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;}
   .output-section-check input{width:18px;height:18px;margin:0;accent-color:var(--teal);cursor:pointer;}
   #mobileEmailBtn:disabled,#printMenuBtn:disabled,#emailMenuBtn:disabled{opacity:.4;cursor:not-allowed;}
+  #continuationCloseBtn{width:auto;min-width:62px;height:34px;padding:0 10px;font:600 13px 'Inter',sans-serif;}
+  #continuationPauseBtn,#continuationExtendBtn,#continuationStopBtn{width:auto;min-height:40px;height:auto;border-radius:9px;padding:10px;font:600 12px 'Inter',sans-serif;}
+  .continuation-actions{gap:7px;max-width:100%;}
+  .transcription-progress{width:100%;height:8px;border-radius:8px;background:#424247;overflow:hidden;margin:8px 0;}
+  .transcription-progress[hidden]{display:none;}
+  .transcription-progress>span{display:block;height:100%;width:4%;background:#FF514A;animation:transcriptionFill 100s cubic-bezier(.1,.5,.2,1) forwards;}
+  @keyframes transcriptionFill{from{width:4%;}to{width:94%;}}
+  .continuation-dock.transcribing .continuation-actions{display:none;}
+  @media(max-width:600px){body.recording-panel-open .app{pointer-events:none;} .continuation-dock{width:min(94vw,360px);}}
 </style>
 </head>
 <body>
@@ -2347,7 +2356,7 @@
 <div class="continuation-dock" id="continuationDock" aria-live="polite">
   <div class="continuation-dock-head" id="continuationDockHandle">
     <div class="continuation-title">Continue dictation</div>
-    <button class="continuation-close" id="continuationCloseBtn" aria-label="Close continuation dictation">&times;</button>
+    <button class="continuation-close" id="continuationCloseBtn" aria-label="Close recording panel">Close</button>
   </div>
   <div class="continuation-body">
     <div class="continuation-level" id="continuationLevel" aria-label="Voice activity"></div>
@@ -2356,19 +2365,16 @@
       <button class="continuation-action start" id="continuationStartBtn" aria-label="Start continuation dictation">
         <svg viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="2"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
-      <button class="continuation-action pause" id="continuationPauseBtn" aria-label="Pause continuation dictation">
-        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
-      </button>
-      <button class="continuation-action extend" id="continuationExtendBtn" aria-label="Extend continuation dictation by five minutes">+5</button>
-      <button class="continuation-action stop" id="continuationStopBtn" aria-label="Stop and append dictation">
-        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
-      </button>
+      <button class="continuation-action pause" id="continuationPauseBtn" aria-label="Pause continuation dictation">Pause</button>
+      <button class="continuation-action extend" id="continuationExtendBtn" aria-label="Extend continuation dictation by five minutes">Extend 5 minutes</button>
+      <button class="continuation-action stop" id="continuationStopBtn" aria-label="Finish recording">Finish</button>
     </div>
     <div class="continuation-mode-bar" id="continuationModeBar" aria-label="Voice note type">
       <button class="continuation-mode-btn active" data-new-voice-mode="">Visit note</button>
       <button class="continuation-mode-btn" data-new-voice-mode="Medical certificate">Medical certificate</button>
       <button class="continuation-mode-btn" data-new-voice-mode="Reply letter">Reply letter</button>
     </div>
+    <div class="transcription-progress" id="transcriptionProgress" hidden aria-label="Transcribing and saving" role="progressbar"><span></span></div>
     <div class="continuation-status" id="continuationStatus">Ready</div>
   </div>
 </div>
@@ -6252,20 +6258,24 @@ function renderContinuationDock(){
   const activeDraft = records.find(record => recordMatchesOwnerAndId(record, continuationState.targetOwnerUid, continuationState.targetId));
   const selectedMode = activeDraft?.selectedMode || '';
   const hasSavedAudio = Boolean(continuationState.audioBlob);
-  const isWaitingForDraft = continuationState.mode === 'new' && !activeDraft?.voiceDraft;
+  const isWaitingForDraft = continuationState.mode === 'new' && !activeDraft;
   continuationLevel.innerHTML = Array.from({length:28}, () => '<span></span>').join('');
   continuationTitle.textContent = continuationState.mode === 'new'
     ? 'Voice note draft'
     : continuationState.documentMode || 'Continue dictation';
   continuationDock.classList.toggle('visible', continuationState.open);
+  const locked = mobileUserLayout.matches && continuationState.open;
+  document.querySelector('.app').inert = locked;
+  continueNoteBtn.inert = locked;
+  document.body.classList.toggle('recording-panel-open', locked);
+  document.getElementById('transcriptionProgress').hidden = !continuationState.processing;
+  continuationDock.classList.toggle('transcribing', continuationState.processing);
   continuationStartBtn.style.display = continuationState.hasStarted ? 'none' : 'grid';
   continuationPauseBtn.style.display = continuationState.hasStarted && !hasSavedAudio ? 'grid' : 'none';
   continuationExtendBtn.style.display = continuationState.hasStarted && !hasSavedAudio ? 'grid' : 'none';
   continuationStopBtn.style.display = continuationState.hasStarted ? 'grid' : 'none';
-  continuationCloseBtn.style.display = continuationState.mode === 'new' && !window.matchMedia('(max-width:600px)').matches ? 'none' : 'grid';
-  continuationPauseBtn.innerHTML = continuationState.recording
-    ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
-    : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5Z"/></svg>';
+  continuationCloseBtn.style.display = 'grid';
+  continuationPauseBtn.textContent = continuationState.recording ? 'Pause' : 'Resume';
   continuationPauseBtn.setAttribute('aria-label', continuationState.recording ? 'Pause continuation dictation' : 'Resume continuation dictation');
   continuationStartBtn.disabled = continuationState.processing || isWaitingForDraft;
   continuationPauseBtn.disabled = continuationState.processing || isWaitingForDraft;
@@ -6549,6 +6559,7 @@ async function stopAndAppendContinuation(){
             shouldContinue:() => continuationState.open && continuationState.targetId === targetId && continuationState.targetOwnerUid === targetOwnerUid
           }
         );
+        if (!continuationState.open) return;
         appendDocumentText(generated.text, continuationState.documentMode);
         setContinuationStatus(`${continuationState.documentMode} added. Review and save.`);
       }else{
@@ -6559,16 +6570,20 @@ async function stopAndAppendContinuation(){
             shouldContinue:() => continuationState.open && continuationState.targetId === targetId && continuationState.targetOwnerUid === targetOwnerUid
           }
         );
+        if (!continuationState.open) return;
         await appendContinuationText(addition);
         setContinuationStatus('New review note created. Review and save.');
       }
     }
+    if (!continuationState.open) return;
+    setContinuationStatus('Saving note...');
+    await saveActiveNote();
     closeContinuationDock({releaseMic:false});
   }catch(error){
     continuationState.hasStarted = Boolean(continuationState.audioBlob);
     const reason = userSafeNoteServiceMessage(error?.message);
     setContinuationStatus(continuationState.audioBlob?.size
-      ? `Note generation paused. Audio is kept in this app session. ${reason} Tap Stop to retry; keep the app open.`
+      ? `Note generation paused. Audio is kept in this app session. ${reason} Tap Finish to retry; keep the app open.`
       : `Note generation stopped. ${reason}`);
   }finally{
     continuationState.processing = false;
@@ -6584,6 +6599,7 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   const draft = records[targetIndex];
   setContinuationStatus('Creating your note...');
   const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, draft.patientData);
+  if (!continuationState.open || draft.cancelProcessing) throw new Error('Recording was closed.');
   draft.transcription = generated.text;
   draft.patientData = generated.patientData;
   draft.voiceDraft = false;
@@ -6602,7 +6618,7 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
     activeIndex = liveIndex;
   }
   renderGeneratedNote(records[activeIndex] || draft);
-  persistRecord(draft,{
+  await persistRecord(draft,{
     kind:'generated',
     voiceDraft:false,
     transcription:draft.transcription,
@@ -6612,10 +6628,6 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
     ...(draftVisitType === 'IP' ? {admissionDate} : {admissionDate:null}),
     status:'Note ready',
     updatedAt:serverTimestamp()
-  }).catch(error => {
-    console.error('Generated continuation note save failed:', error);
-    const visibleDraft = records[activeIndex] || draft;
-    visibleDraft.status = 'Note ready. Saving is pending.';
   });
 }
 
@@ -7712,6 +7724,19 @@ function updateDateNavigation(){
   todayBtn.textContent = selectedVisitDate.toLocaleDateString('en-US',{weekday:'long'});
 }
 
+function openHomeForSelectedDate(){
+  captureActiveEditorState();
+  pendingSelectId = null;
+  pendingNewVoiceDockId = null;
+  mobileHomeDefaultPending = false;
+  mobileHomeDefaultActive = true;
+  clearTimelineSelection();
+  checkedOutputSections.clear();
+  showMobileHomeScreen();
+  updateDateNavigation();
+  subscribeToSelectedDate();
+}
+
 function moveVisitDate(days){
   const next = new Date(selectedVisitDate);
   next.setDate(next.getDate() + days);
@@ -7721,8 +7746,7 @@ function moveVisitDate(days){
     selectedTimelineKey = null;
     updateSearchScopeToggle();
   }
-  updateDateNavigation();
-  subscribeToSelectedDate();
+  openHomeForSelectedDate();
 }
 
 previousDateBtn.addEventListener('click', () => moveVisitDate(-1));
@@ -7742,8 +7766,7 @@ todayBtn.addEventListener('click', () => {
     selectedTimelineKey = null;
     updateSearchScopeToggle();
   }
-  updateDateNavigation();
-  subscribeToSelectedDate();
+  openHomeForSelectedDate();
 });
 visitDateInput.addEventListener('change', () => {
   const [year,month,day] = visitDateInput.value.split('-').map(Number);
@@ -7753,8 +7776,7 @@ visitDateInput.addEventListener('change', () => {
     selectedTimelineKey = null;
     updateSearchScopeToggle();
   }
-  updateDateNavigation();
-  subscribeToSelectedDate();
+  openHomeForSelectedDate();
 });
 updateSearchScopeToggle();
 updateDateNavigation();
@@ -8333,7 +8355,7 @@ authSaveBtn.addEventListener('click', () => {
   closeAuthModal();
 });
 
-saveDraftBtn.addEventListener('click', async () => {
+async function saveActiveNote(){
   if (await saveOpAllEntries()) return;
   const draft = currentEditableRecord();
   if (!draft) return;
@@ -8375,7 +8397,8 @@ saveDraftBtn.addEventListener('click', async () => {
   });
   clearRecordDirty(draft);
   flashSaveButton();
-});
+}
+saveDraftBtn.addEventListener('click', saveActiveNote);
 
 function extractPatientFromNote(text, fallback = {}){
   const find = pattern => String(text || '').match(pattern)?.[1]?.trim();
@@ -8485,7 +8508,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=24', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=25', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

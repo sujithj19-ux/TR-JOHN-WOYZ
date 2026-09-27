@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trjohn-woyz-v24';
+const CACHE_NAME = 'trjohn-woyz-v25';
 const APP_SHELL = [
   './',
   './index.html',

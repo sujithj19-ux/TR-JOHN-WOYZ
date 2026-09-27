@@ -25,3 +25,15 @@ Deploy subsequent rule updates with `firebase deploy --only firestore:rules --pr
 - `user.html`: notes editor, formerly index.html.
 - Use the Settings menu to switch between the worklist and notes editor.
 - Firebase Hosting redirects old admin URLs to the site root when hosting is deployed.
+
+## Install on mobile
+
+Open https://sujithj19-ux.github.io/TR-JOHN-WOYZ/user.html on the phone.
+
+- iPhone/iPad: Safari → Share → Add to Home Screen → Open as Web App (if shown) → Add.
+- Android: Chrome menu → Install app / Add to Home screen.
+
+The installed Doctor WOYZ app launches user.html. The website root remains the worklist.
+The icon uses the dark red recording-symbol-and-W design supplied as a reference.
+Existing installations may need removal and reinstallation to refresh the home-screen icon.
+The app shell is cached; sign-in, Firestore sync and Gemini voice processing require an internet connection.

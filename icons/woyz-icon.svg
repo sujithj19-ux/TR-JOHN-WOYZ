@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#17171D"/>
-  <circle cx="138" cy="256" r="80" fill="#452126"/>
-  <circle cx="138" cy="256" r="38" fill="#F45155"/>
-  <text x="238" y="286" text-anchor="middle" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="84" font-weight="900" letter-spacing="2">WOYZ</text>
-  <rect x="26" y="26" width="460" height="460" rx="100" fill="none" stroke="#F45155" stroke-width="24"/>
+  <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#621820"/><stop offset="1" stop-color="#21080e"/></linearGradient></defs>
+  <rect width="512" height="512" rx="112" fill="#53131b"/>
+  <rect x="48" y="48" width="416" height="416" rx="86" fill="url(#bg)" stroke="#ff4353" stroke-width="15"/>
+  <circle cx="167" cy="256" r="99" fill="#47232c"/>
+  <circle cx="167" cy="256" r="75" fill="#171820" stroke="#797680" stroke-width="13"/>
+  <circle cx="167" cy="256" r="51" fill="#a83440"/>
+  <circle cx="167" cy="256" r="35" fill="#ff4958"/>
+  <path d="M250 194 H277 L292 278 L309 210 H333 L350 278 L365 194 H392 L364 319 H339 L321 250 L303 319 H278 Z" fill="#fff"/>
 </svg>

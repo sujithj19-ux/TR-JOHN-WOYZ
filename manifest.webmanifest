@@ -1,32 +1,37 @@
 {
-  "name": "WOYZ Notes",
-  "short_name": "WOYZ Notes",
-  "description": "WOYZ clinical voice notes and drafts.",
-  "start_url": "./",
+  "name": "Doctor WOYZ",
+  "short_name": "Doctor WOYZ",
+  "description": "TR John\u2019s personal WOYZ notes app.",
+  "start_url": "./user.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F4F5F3",
-  "theme_color": "#1F5F52",
-  "categories": ["medical", "productivity"],
+  "theme_color": "#53131b",
+  "categories": [
+    "medical",
+    "productivity"
+  ],
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "icons/icon-192-v5.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "icons/icon-512-v5.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/maskable-512.png",
+      "src": "icons/maskable-512-v5.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "id": "./",
+  "prefer_related_applications": false
 }

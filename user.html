@@ -2172,10 +2172,6 @@
         <span>Note</span>
       </button>
     </div>
-    <div class="visit-toggle" id="visitToggle" aria-label="Visit type">
-      <button class="visit-toggle-btn active" data-visit-type="OP">OP</button>
-      <button class="visit-toggle-btn" data-visit-type="IP">IP</button>
-    </div>
     <div class="mobile-doc-actions" aria-label="Mobile document type">
       <button class="mobile-doc-action" data-mobile-voice-mode="Medical certificate">Certificate</button>
       <button class="mobile-doc-action" data-mobile-voice-mode="Reply letter">Reply Letter</button>
@@ -2193,10 +2189,6 @@
 
     <div class="sidebar-section-label">Records</div>
     <div class="entry-list" id="entryList"></div>
-    <div class="privacy-row">
-      <button class="privacy-switch" id="anonymizeToggle" type="button" role="switch" aria-checked="false" aria-label="Toggle anonymized display"></button>
-      <button class="privacy-label" id="anonymizeLabel" type="button">Anonymize</button>
-    </div>
   </aside>
 
   <!-- MAIN -->
@@ -2212,10 +2204,6 @@
         <div class="mobile-topbar-actions">
           <button class="mobile-list-btn" id="mobileListBtn" type="button">List</button>
           <button class="mobile-home-btn" id="mobileHomeBtn" type="button">Home</button>
-        </div>
-        <div class="visit-toggle" id="mobileVisitToggle" aria-label="Mobile visit type">
-          <button class="visit-toggle-btn active" data-mobile-visit-type="OP">OP</button>
-          <button class="visit-toggle-btn" data-mobile-visit-type="IP">IP</button>
         </div>
       </div>
       <div class="topbar-doc-actions" id="topbarDocActions" aria-label="Voice note actions">
@@ -2575,8 +2563,6 @@ function initials(name){
 const entryList = document.getElementById('entryList');
 const recordSearchInput = document.getElementById('recordSearchInput');
 const searchScopeToggle = document.getElementById('searchScopeToggle');
-const anonymizeLabel = document.getElementById('anonymizeLabel');
-const anonymizeToggle = document.getElementById('anonymizeToggle');
 const mainScroll = document.getElementById('mainScroll');
 const topbarPatient = document.getElementById('topbarPatient');
 const topbarName = document.getElementById('topbarName');
@@ -2645,8 +2631,6 @@ const previousDateBtn = document.getElementById('previousDateBtn');
 const nextDateBtn = document.getElementById('nextDateBtn');
 const visitDateDisplay = document.getElementById('visitDateDisplay');
 const visitDateInput = document.getElementById('visitDateInput');
-const visitToggle = document.getElementById('visitToggle');
-const mobileVisitToggle = document.getElementById('mobileVisitToggle');
 const todayBtn = document.getElementById('todayBtn');
 const addNoteBtn = document.getElementById('addNoteBtn');
 const recordBtn = document.getElementById('recordBtn');
@@ -2691,7 +2675,6 @@ const continuationModeBar = document.getElementById('continuationModeBar');
 
 const GEMINI_KEY_STORAGE = 'woyz_gemini_authorization_key';
 const mobileUserLayout = window.matchMedia('(max-width:600px)');
-const ANONYMIZE_STORAGE = 'woyz_anonymize_display';
 const DEFAULT_PRESCRIPTION_LAYOUT = {
   includeMalayalam:true,
   header:{
@@ -2808,7 +2791,7 @@ let printCloseTimer = null;
 let emailCloseTimer = null;
 let timelineCloseTimer = null;
 let pendingEmailMode = 'visit';
-let anonymizeEnabled = !mobileUserLayout.matches && localStorage.getItem(ANONYMIZE_STORAGE) === 'true';
+const anonymizeEnabled = false;
 let continuationState = {
   open:false,
   mode:'continue',
@@ -3693,8 +3676,7 @@ async function addTimelinePatientToToday(sourceRecord){
   const identity = patientIdentity(sourceRecord);
   const today = new Date();
   selectedVisitDate = today;
-  selectedVisitType = sourceVisitType;
-  updateVisitToggle();
+  selectedVisitType = 'OP';
   const selectedDateString = dateInputValue(selectedVisitDate);
   const createdAt = today.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}) + ', ' + today.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   const patientData = {
@@ -4116,15 +4098,6 @@ async function latestVisitDateForSelectedType(){
     .pop() || null;
 }
 
-function updateVisitToggle(){
-  visitToggle.querySelectorAll('[data-visit-type]').forEach(button => {
-    button.classList.toggle('active', button.dataset.visitType === selectedVisitType);
-  });
-  mobileVisitToggle.querySelectorAll('[data-mobile-visit-type]').forEach(button => {
-    button.classList.toggle('active', button.dataset.mobileVisitType === selectedVisitType);
-  });
-}
-
 function updateSearchScopeToggle(){
   searchScopeToggle.querySelectorAll('[data-search-scope]').forEach(button => {
     button.classList.toggle('active', button.dataset.searchScope === searchScope);
@@ -4154,33 +4127,6 @@ function setSearchScope(scope){
   updateContinueNoteButton();
   setMobileBottomActionsVisible(false);
   mainScroll.innerHTML = '<div class="empty-state"><div class="empty-title">Search all patients</div><div class="empty-sub">Type a name or UHID, then select a patient to view previous records.</div></div>';
-}
-
-function updateAnonymizeToggle(){
-  anonymizeToggle.classList.toggle('active', anonymizeEnabled);
-  anonymizeToggle.setAttribute('aria-checked', anonymizeEnabled ? 'true' : 'false');
-}
-
-function refreshAnonymizedView(){
-  updateAnonymizeToggle();
-  renderEntries();
-  if (searchScope === 'all' && selectedTimelineKey) renderPatientTimeline(selectedTimelineKey);
-  else if (selectedVisitType === 'OP' && selectedOpTimelineKey) renderOpPatientTimeline(selectedOpTimelineKey, selectedOpTimelineEntryId);
-  else if (selectedVisitType === 'IP' && activeIndex !== null && records[activeIndex]) selectEntry(activeIndex);
-  else if (openDefaultOpView()) return;
-  else if (activeIndex !== null && records[activeIndex]) selectEntry(activeIndex);
-}
-
-function setVisitType(type){
-  selectedVisitType = !mobileUserLayout.matches && type === 'IP' ? 'IP' : 'OP';
-  clearTimelineSelection();
-  updateVisitToggle();
-  if (searchScope === 'all'){
-    searchScope = 'today';
-    selectedTimelineKey = null;
-    updateSearchScopeToggle();
-  }
-  subscribeToSelectedDate();
 }
 
 function closeMobileSidebar(){
@@ -4300,7 +4246,7 @@ function subscribeToAllRecords(){
   owners.forEach(ownerUid => {
     const unsubscribe = onSnapshot(collection(db,'users',ownerUid,'notes'), snapshot => {
       allOwnerRecords.set(ownerUid, snapshot.docs.map(docSnap => applyLocalDirtyRecord(noteFromSnapshot(docSnap, ownerUid))));
-      allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => !mobileUserLayout.matches || noteVisitType(record) !== 'IP');
+      allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => noteVisitType(record) === 'OP');
       if (searchScope === 'all'){
         renderEntries();
         if (selectedTimelineKey) renderPatientTimeline(selectedTimelineKey);
@@ -4313,7 +4259,7 @@ function subscribeToAllRecords(){
     }, error => {
       console.error('Unable to load all notes:', error);
       allOwnerRecords.set(ownerUid, []);
-      allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => !mobileUserLayout.matches || noteVisitType(record) !== 'IP');
+      allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => noteVisitType(record) === 'OP');
       if (searchScope === 'all') renderEntries();
       else if (selectedVisitType === 'OP') renderEntries();
       else if (selectedVisitType === 'IP') renderEntries();
@@ -7198,7 +7144,6 @@ function selectExistingDraftSnapshot(snapshot){
   pendingSelectId = snapshot.id;
   pendingNewVoiceDockId = data.voiceDraft === true ? snapshot.id : null;
   selectedVisitType = data.visitType === 'IP' ? 'IP' : 'OP';
-  updateVisitToggle();
   const existingDate = data.visitDate;
   if (existingDate){
     const [year,month,day] = existingDate.split('-').map(Number);
@@ -7226,7 +7171,6 @@ function selectExistingDraftRecord(record){
   pendingSelectId = record.firestoreId;
   pendingNewVoiceDockId = record.voiceDraft === true ? record.firestoreId : null;
   selectedVisitType = noteVisitType(record);
-  updateVisitToggle();
   if (record.visitDate){
     const [year,month,day] = record.visitDate.split('-').map(Number);
     selectedVisitDate = new Date(year,month-1,day);
@@ -7568,41 +7512,8 @@ visitDateInput.addEventListener('change', () => {
   updateDateNavigation();
   subscribeToSelectedDate();
 });
-visitToggle.addEventListener('click', event => {
-  const button = event.target.closest('[data-visit-type]');
-  if (!button) return;
-  setVisitType(button.dataset.visitType);
-});
-mobileVisitToggle.addEventListener('click', event => {
-  const button = event.target.closest('[data-mobile-visit-type]');
-  if (!button) return;
-  setVisitType(button.dataset.mobileVisitType);
-});
-updateVisitToggle();
-updateAnonymizeToggle();
 updateSearchScopeToggle();
 updateDateNavigation();
-
-function toggleAnonymize(){
-  if (mobileUserLayout.matches) return;
-  anonymizeEnabled = !anonymizeEnabled;
-  localStorage.setItem(ANONYMIZE_STORAGE, anonymizeEnabled ? 'true' : 'false');
-  refreshAnonymizedView();
-}
-
-mobileUserLayout.addEventListener('change', () => {
-  anonymizeEnabled = !mobileUserLayout.matches && localStorage.getItem(ANONYMIZE_STORAGE) === 'true';
-  allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => !mobileUserLayout.matches || noteVisitType(record) !== 'IP');
-  if (mobileUserLayout.matches && selectedVisitType === 'IP') {
-    if (currentUser) setVisitType('OP');
-    else { selectedVisitType = 'OP'; updateVisitToggle(); }
-  }
-  if (currentUser) refreshAnonymizedView();
-  else updateAnonymizeToggle();
-});
-
-anonymizeLabel.addEventListener('click', toggleAnonymize);
-anonymizeToggle.addEventListener('click', toggleAnonymize);
 
 recordSearchInput.addEventListener('input', () => {
   recordSearchTerm = recordSearchInput.textContent || '';
@@ -8345,7 +8256,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=12', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=13', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

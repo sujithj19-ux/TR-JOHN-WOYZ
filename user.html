@@ -2119,14 +2119,14 @@
       min-height:0;
     }
     body.mobile-typing .main-scroll{
-      padding-bottom:calc(200px + env(safe-area-inset-bottom));
-      scroll-padding-bottom:100px;
+      padding-bottom:calc(max(420px, var(--mobile-keyboard-inset, 0px) + 160px) + env(safe-area-inset-bottom));
+      scroll-padding-bottom:160px;
     }
     body.mobile-typing .mobile-bottom-actions{
       bottom:var(--mobile-keyboard-inset,0px);
     }
     body.mobile-typing .note-editor,
-    body.mobile-typing [contenteditable="true"]{ scroll-margin-bottom:100px; }
+    body.mobile-typing [contenteditable="true"]{ scroll-margin-bottom:160px; }
   }
   .sidebar-entry-row{ display:flex; align-items:stretch; position:relative; gap:4px; }
   .sidebar-entry-row > .entry{ flex:1; min-width:0; }
@@ -8369,7 +8369,7 @@ function syncMobileKeyboard(keepCaretVisible = false){
       if (caret) rect = caret;
     }
     const scrollRect = mainScroll.getBoundingClientRect();
-    const visibleBottom = Math.min(scrollRect.bottom, (viewport?.offsetTop || 0) + visibleHeight) - 90;
+    const visibleBottom = Math.min(scrollRect.bottom, (viewport?.offsetTop || 0) + visibleHeight) - 140;
     if (rect.bottom > visibleBottom) mainScroll.scrollTop += rect.bottom - visibleBottom;
     else if (rect.top < scrollRect.top + 12) mainScroll.scrollTop -= scrollRect.top + 12 - rect.top;
   });
@@ -8404,7 +8404,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=18', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=19', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

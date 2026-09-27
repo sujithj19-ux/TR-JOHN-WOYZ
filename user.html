@@ -5810,6 +5810,7 @@ function renderGeneratedNote(draft){
             <h1 class="generated-note-title">${escapeHtml(title)}</h1>
           </div>
         </div>
+        <h2 class="op-all-entry-title">${escapeHtml(formatVisitDateLabel(draft.visitDate))}</h2>
         <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${clinicalNoteHtml(displayText)}</div>`}
         <section id="previousPatientNotes" aria-label="Previous patient notes">${previousPatientNotesHtml(draft)}</section>
       </section>
@@ -6250,7 +6251,8 @@ function openContinuationDock(){
   continuationState.audioBlob = null;
   continuationState.documentMode = null;
   continuationState.cancelNewDraft = false;
-  continuationState.status = 'Ready to continue selected note';
+  continuationState.reviewNoteRef = null;
+  continuationState.status = 'Ready to record a new review note';
   remainingSeconds = 300;
   placeDock('right');
   renderContinuationDock();
@@ -6495,8 +6497,8 @@ async function stopAndAppendContinuation(){
             shouldContinue:() => continuationState.open && continuationState.targetId === targetId && continuationState.targetOwnerUid === targetOwnerUid
           }
         );
-        appendContinuationText(addition);
-        setContinuationStatus('Added to selected note. Review and save.');
+        await appendContinuationText(addition);
+        setContinuationStatus('New review note created. Review and save.');
       }
     }
     closeContinuationDock({releaseMic:false});
@@ -6555,12 +6557,44 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   });
 }
 
-function appendContinuationText(addition){
+async function appendContinuationText(addition){
   const text = stripLeadingReviewNoteHeading(addition);
-  if (!text) return;
-  const record = continuationTargetRecord();
-  if (!record) return;
-  appendTextToRecord(record, text, {review:true, scrollToAppended:true});
+  if (!text) throw new Error('No review text was returned. Please retry.');
+  captureActiveEditorState();
+  const source = continuationTargetRecord();
+  if (!source || noteOwnerUid(source) !== currentUser?.uid) throw new Error('Select your patient before creating a review note.');
+  const now = new Date();
+  const today = dateInputValue(now);
+  // Only the unused Add to Today placeholder can be filled in place.
+  const reusePlaceholder = source.isDraft && source.visitDate === today && isEmptyCarriedReview(source);
+  const noteRef = continuationState.reviewNoteRef || (reusePlaceholder
+    ? doc(userNotesCollection(), source.firestoreId)
+    : doc(userNotesCollection()));
+  continuationState.reviewNoteRef = noteRef;
+  const data = {
+    heading:'Review Note', selectedMode:'Review Note', kind:'generated',
+    voiceDraft:false, isDraft:false, saved:false, everSaved:false,
+    visitDate:today, visitType:'OP', admissionDate:null,
+    createdAt:serverTimestamp(),
+    createdAtLabel:now.toLocaleString('en-GB'),
+    transcription:text,
+    patientData:patientDataWithFallback(patientIdentity(source)),
+    sourcePatientKey:source.sourcePatientKey || patientSearchKey(source),
+    sourceNoteId:reusePlaceholder ? source.sourceNoteId : source.firestoreId,
+    carriedForwardFrom:reusePlaceholder ? source.sourceNoteId : source.firestoreId,
+    status:'Note ready', updatedAt:serverTimestamp()
+  };
+  await setDoc(noteRef, data, {merge:true});
+  if (reusePlaceholder) clearRecordDirty(source);
+  selectedVisitDate = now;
+  selectedVisitType = 'OP';
+  clearTimelineSelection();
+  pendingSelectId = noteRef.id;
+  setSearchScope('today');
+  selectLocalDraftFromSnapshot({id:noteRef.id, data:() => ({...data, createdAt:{toMillis:() => now.getTime()}})});
+  updateDateNavigation();
+  subscribeToSelectedDate();
+  mainScroll.scrollTop = 0;
 }
 
 function continuationTargetRecord(){
@@ -8404,7 +8438,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=19', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=20', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

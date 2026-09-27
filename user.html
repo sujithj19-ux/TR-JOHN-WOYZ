@@ -2134,6 +2134,10 @@
   .entry-delete-menu{ display:none; position:absolute; right:4px; top:44px; z-index:100; width:230px; max-width:95%; padding:6px; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 24px #0002; }
   .entry-delete-menu.open{ display:block; }
   .entry-delete-menu button{ width:100%; min-height:44px; padding:10px; border:0; background:#fff; color:#b42318; text-align:left; font:600 13px 'Inter',sans-serif; cursor:pointer; }
+  #previousPatientNotes{ margin-top:28px; }
+  #previousPatientNotes:empty{ display:none; }
+  .patient-history-heading{ margin:0 0 18px; font:700 14px 'Inter',sans-serif; color:var(--muted); }
+  #previousPatientNotes .note-editor{ min-height:0; }
 </style>
 </head>
 <body>
@@ -3139,14 +3143,40 @@ function timelineRecordsForKey(key){
 }
 
 function opTimelineRecordsForKey(key){
-  const recordsForPatient = timelineRecordsForKey(key).filter(record => noteVisitType(record) === 'OP');
-  const firstVisit = [...recordsForPatient]
-    .filter(record => opTimelineKind(record) === 'Visit Note')
-    .sort((a,b) => recordSortTime(a) - recordSortTime(b))[0] || null;
-  const rest = recordsForPatient
-    .filter(record => record !== firstVisit)
-    .sort((a,b) => recordSortTime(b) - recordSortTime(a));
-  return firstVisit ? [firstVisit, ...rest] : rest;
+  return sortPatientHistoryNewestFirst(timelineRecordsForKey(key).filter(record => noteVisitType(record) === 'OP'));
+}
+
+function sortPatientHistoryNewestFirst(items){
+  return [...items].sort((a,b) => String(b.visitDate || '').localeCompare(String(a.visitDate || '')) || recordSortTime(b) - recordSortTime(a));
+}
+
+function previousPatientNotes(draft){
+  if (!draft?.sourcePatientKey && !draft?.sourceNoteId) return [];
+  const key = draft.sourcePatientKey || patientSearchKey(draft);
+  return sortPatientHistoryNewestFirst(allRecords.filter(record =>
+    !record.isDeleted && !record.isDraft && noteVisitType(record) === 'OP'
+    && noteOwnerUid(record) === noteOwnerUid(draft)
+    && record.firestoreId !== draft.firestoreId
+    && (patientSearchKey(record) === key || record.firestoreId === draft.sourceNoteId)
+  ));
+}
+
+function previousPatientNotesHtml(draft){
+  const history = previousPatientNotes(draft);
+  if (!history.length) return '';
+  return `<h2 class="patient-history-heading">Previous notes · newest first</h2>` + history.map(record => `
+    <article class="op-all-entry">
+      <h3 class="op-all-entry-title">${escapeHtml(record.visitDate || '')} · ${escapeHtml(timelineTitleForRecord(record))}</h3>
+      <div class="note-editor" role="region" aria-label="Previous note from ${escapeHtml(record.visitDate || '')}">${richNoteHtml(displayNoteTextForRecord(record, record.transcription || ''))}</div>
+    </article>
+  `).join('');
+}
+
+function refreshPreviousPatientNotes(){
+  const history = document.getElementById('previousPatientNotes');
+  if (!history) return;
+  const draft = currentEditableRecord();
+  history.innerHTML = previousPatientNotesHtml(draft);
 }
 
 function ipTimelineRecordsForKey(key){
@@ -4335,6 +4365,7 @@ function subscribeToAllRecords(){
     const unsubscribe = onSnapshot(collection(db,'users',ownerUid,'notes'), snapshot => {
       allOwnerRecords.set(ownerUid, snapshot.docs.map(docSnap => applyLocalDirtyRecord(noteFromSnapshot(docSnap, ownerUid))));
       allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => noteVisitType(record) === 'OP');
+      refreshPreviousPatientNotes();
       if (searchScope === 'all'){
         renderEntries();
         if (selectedTimelineKey) renderPatientTimeline(selectedTimelineKey);
@@ -4348,6 +4379,7 @@ function subscribeToAllRecords(){
       console.error('Unable to load all notes:', error);
       allOwnerRecords.set(ownerUid, []);
       allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => noteVisitType(record) === 'OP');
+      refreshPreviousPatientNotes();
       if (searchScope === 'all') renderEntries();
       else if (selectedVisitType === 'OP') renderEntries();
       else if (selectedVisitType === 'IP') renderEntries();
@@ -5735,13 +5767,11 @@ function renderGeneratedNote(draft){
           </div>
         </div>
         <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${richNoteHtml(displayText)}</div>
-        <button class="mobile-review-inline ${selectedRecordCanContinue() ? 'visible' : ''}" id="mobileInlineReviewBtn" aria-label="Review note dictation for selected note">Review Note</button>
+        <section id="previousPatientNotes" aria-label="Previous patient notes">${previousPatientNotesHtml(draft)}</section>
       </section>
     </div>`;
   const editor = document.getElementById('generatedNoteEditor');
-  const mobileInlineReviewBtn = document.getElementById('mobileInlineReviewBtn');
   resizeNoteEditor(editor);
-  if (mobileInlineReviewBtn) mobileInlineReviewBtn.addEventListener('click', openContinuationDock);
   if (canEdit){
     ['focus','keyup','mouseup','touchend'].forEach(eventName => {
       editor.addEventListener(eventName, captureEditorSelection);
@@ -8344,7 +8374,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=14', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=15', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

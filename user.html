@@ -5825,7 +5825,7 @@ async function startRecording(){
     mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
     audioChunks = [];
     setupAudioAnalyser(mediaStream);
-    mediaRecorder = new MediaRecorder(mediaStream);
+    mediaRecorder = createAudioRecorder(mediaStream);
     mediaRecorder.addEventListener('dataavailable', event => { if (event.data.size) audioChunks.push(event.data); });
     mediaRecorder.start(1000);
     draft.hasStarted = true;
@@ -5958,13 +5958,38 @@ async function stopAndTranscribe(){
   }
 }
 
+function createAudioRecorder(stream){
+  // Prefer a supported audio container rather than relying on browser defaults.
+  const formats = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'];
+  for (const mimeType of formats){
+    if (!MediaRecorder.isTypeSupported?.(mimeType)) continue;
+    try { return new MediaRecorder(stream, {mimeType}); } catch (_) { /* Try the next supported format. */ }
+  }
+  return new MediaRecorder(stream);
+}
+
+function recordingMimeType(type){
+  // Gemini needs the container MIME type, without MediaRecorder codec parameters.
+  return String(type || '').split(';')[0].trim().toLowerCase();
+}
+
 function stopMediaRecorder(){
   return new Promise((resolve, reject) => {
-    if (!mediaRecorder) return reject(new Error('No recording is available.'));
-    const mimeType = mediaRecorder.mimeType || 'audio/webm';
-    mediaRecorder.addEventListener('stop', () => resolve(new Blob(audioChunks, {type:mimeType})), {once:true});
-    if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-    else resolve(new Blob(audioChunks, {type:mimeType}));
+    const recorder = mediaRecorder;
+    if (!recorder) return reject(new Error('No recording is available.'));
+    const complete = () => {
+      const chunks = audioChunks.filter(chunk => chunk.size > 0);
+      const mimeType = recordingMimeType(chunks.find(chunk => chunk.type)?.type || recorder.mimeType);
+      const audioBlob = new Blob(chunks, {type:mimeType});
+      if (!audioBlob.size) return reject(new Error('No audio was captured. Please check microphone access and record again.'));
+      resolve(audioBlob);
+    };
+    if (recorder.state === 'inactive') complete();
+    else {
+      // The stop event follows the final dataavailable event, including on Safari.
+      recorder.addEventListener('stop', complete, {once:true});
+      recorder.stop();
+    }
   });
 }
 
@@ -6238,7 +6263,7 @@ async function startContinuationRecording(){
     mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
     audioChunks = [];
     setupAudioAnalyser(mediaStream);
-    mediaRecorder = new MediaRecorder(mediaStream);
+    mediaRecorder = createAudioRecorder(mediaStream);
     mediaRecorder.addEventListener('dataavailable', event => { if (event.data.size) audioChunks.push(event.data); });
     mediaRecorder.start(1000);
     continuationState.hasStarted = true;
@@ -6351,7 +6376,10 @@ async function stopAndAppendContinuation(){
     closeContinuationDock({releaseMic:false});
   }catch(error){
     continuationState.hasStarted = Boolean(continuationState.audioBlob);
-    setContinuationStatus('Note generation paused. The audio is still kept.');
+    const reason = userSafeNoteServiceMessage(error?.message);
+    setContinuationStatus(continuationState.audioBlob?.size
+      ? `Note generation paused. Audio is kept in this app session. ${reason} Tap Stop to retry; keep the app open.`
+      : `Note generation stopped. ${reason}`);
   }finally{
     continuationState.processing = false;
     stopMediaTracks();
@@ -6801,6 +6829,9 @@ function isTransientGeminiError(status, message){
 function userSafeNoteServiceMessage(message){
   const raw = String(message || '').trim();
   if (!raw) return 'Please try again.';
+  if (/api.?key|permission.denied|unauthenticated|unauthorized|referer|referrer|forbidden/i.test(raw)) return 'Check the authorization key in Settings on this device and its website restrictions.';
+  if (/mime|codec|audio.*(?:format|unsupported)|unsupported.*audio/i.test(raw)) return 'The note service could not read this recording format. Please try a fresh recording.';
+  if (/too large|payload.*size|request.*size/i.test(raw)) return 'This recording is too large. Please use a shorter recording.';
   if (/gemini|generativelanguage|google|model|api/i.test(raw)) return 'The note service is temporarily busy. Please try again.';
   return raw;
 }
@@ -6828,6 +6859,9 @@ async function runUntilGenerated(task, {setStatus,shouldContinue} = {}){
 }
 
 async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt,taskPrompt,responseSchema,onRetry}){
+  if (!audioBlob?.size) throw noteServiceError('No audio was captured. Please record again.');
+  const audioMimeType = recordingMimeType(audioBlob.type);
+  if (!audioMimeType) throw noteServiceError('The recording format could not be identified. Please record again.');
   const attemptPlan = [
     {model:GEMINI_MODELS[0],waitMs:1200},
     {model:GEMINI_MODELS[0],waitMs:2800},
@@ -6853,7 +6887,7 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
           systemInstruction:{parts:[{text:systemPrompt}]},
           contents:[{role:'user',parts:[
             {text:taskPrompt},
-            {inline_data:{mime_type:audioBlob.type || 'audio/webm',data:audioData}}
+            {inline_data:{mime_type:audioMimeType,data:audioData}}
           ]}],
           generationConfig:{temperature:0,maxOutputTokens:8192,responseMimeType:'application/json',responseSchema}
         })
@@ -8264,7 +8298,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=9', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=10', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

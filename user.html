@@ -2138,6 +2138,10 @@
   #previousPatientNotes:empty{ display:none; }
   .patient-history-heading{ margin:0 0 18px; font:700 14px 'Inter',sans-serif; color:var(--muted); }
   #previousPatientNotes .note-editor{ min-height:0; }
+  .patient-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:24px;}
+  .patient-fields label{font:600 13px 'Inter',sans-serif;color:var(--muted);}
+  .patient-fields input{display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface,#fff);color:var(--text);font:inherit;font-size:16px;}
+  @media(max-width:700px){.patient-fields{grid-template-columns:repeat(2,minmax(0,1fr));}}
 </style>
 </head>
 <body>
@@ -3167,7 +3171,7 @@ function previousPatientNotesHtml(draft){
   return history.map(record => `
     <article class="op-all-entry">
       <h3 class="op-all-entry-title">${escapeHtml(formatVisitDateLabel(record.visitDate))}</h3>
-      <div class="note-editor" role="region" aria-label="Previous note from ${escapeHtml(record.visitDate || '')}">${richNoteHtml(displayNoteTextForRecord(record, record.transcription || ''))}</div>
+      <div class="note-editor" role="region" aria-label="Previous note from ${escapeHtml(record.visitDate || '')}">${clinicalNoteHtml(displayNoteTextForRecord(record, record.transcription || ''))}</div>
     </article>
   `).join('');
 }
@@ -3507,17 +3511,19 @@ function renderPatientTimeline(key){
     return `
       <article class="timeline-entry">
         <h2 class="timeline-entry-title">${escapeHtml(timelineTitleForRecord(record))}</h2>
-        <div class="timeline-note">${richNoteHtml(displayText)}</div>
+        <div class="timeline-note">${clinicalNoteHtml(displayText)}</div>
       </article>
     `;
   }).join('');
   mainScroll.innerHTML = `
     <div class="timeline-wrap">
+      ${patientFieldsHtml(latest)}
       <div class="timeline-header">
         <button class="timeline-add-btn" id="addTimelinePatientTodayBtn" type="button">Add to Today</button>
       </div>
       ${renderedNotes}
     </div>`;
+  wirePatientFields(timelineRecords);
   document.getElementById('addTimelinePatientTodayBtn')?.addEventListener('click', () => addTimelinePatientToToday(latest));
 }
 
@@ -3573,13 +3579,14 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
     return `
       <article class="op-all-entry">
         ${entryTitle}
-        <div class="op-all-entry-editor note-editor" data-op-all-entry-editor="${escapeHtml(record.firestoreId)}" data-op-all-entry-owner="${escapeHtml(noteOwnerUid(record) || '')}" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable ${escapeHtml(opTimelineEntryLabel(record))}">${richNoteHtml(displayText)}</div>
+        <div class="op-all-entry-editor note-editor" data-op-all-entry-editor="${escapeHtml(record.firestoreId)}" data-op-all-entry-owner="${escapeHtml(noteOwnerUid(record) || '')}" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable ${escapeHtml(opTimelineEntryLabel(record))}">${clinicalNoteHtml(displayText)}</div>
       </article>
     `;
   }).join('');
   mainScroll.innerHTML = `
     <div class="generated-note op-all-editable">
       <section class="generated-note-card">
+        ${patientFieldsHtml(latest)}
         <div class="generated-note-head">
           <div>
             <h1 class="generated-note-title">Visit Note</h1>
@@ -3588,6 +3595,7 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
         ${renderedNotes}
       </section>
     </div>`;
+  wirePatientFields(timelineRecords);
   mainScroll.querySelectorAll('[data-op-all-entry-editor]').forEach(editor => {
     resizeNoteEditor(editor);
     ['focus','keyup','mouseup','touchend'].forEach(eventName => {
@@ -3651,7 +3659,7 @@ function renderIpPatientTimeline(key, date = selectedIpTimelineDate || dateInput
     return `
       <article class="timeline-entry" data-ip-timeline-note="${escapeHtml(section.record.firestoreId)}" data-ip-timeline-owner="${escapeHtml(noteOwnerUid(section.record) || '')}"${reviewAttribute} tabindex="0" role="button" aria-label="Open ${escapeHtml(section.title)}">
         <h2 class="timeline-entry-title">${escapeHtml(section.title)}</h2>
-        <div class="timeline-note">${richNoteHtml(displayText)}</div>
+        <div class="timeline-note">${clinicalNoteHtml(displayText)}</div>
       </article>
     `;
   }).join('');
@@ -4888,6 +4896,41 @@ function simpleRichNoteHtml(text){
     .join('<br>');
 }
 
+function clinicalNoteHtml(text){
+  const clinical = String(text || '').replace(/^(?:Patient Name|Age|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
+  return richNoteHtml(clinical).replace(/<hr class="review-note-divider">(?:<strong>)?Review Note(?:\s*\([^)]*\))?:(?:<\/strong>)?/gi,
+    match => `<span class="note-review-metadata" contenteditable="false" hidden>${match.replace(/<hr[^>]*>/, '')}</span>`);
+}
+
+function patientFieldsHtml(record){
+  const identity = patientIdentity(record);
+  return `<div class="patient-fields" aria-label="Patient details">${[['name','Name'],['age','Age'],['uhid','UHID'],['sex','Sex']].map(([key,label]) =>
+    `<label>${label}<input data-patient-field="${key}" value="${escapeHtml(isNilLike(identity[key]) ? '' : identity[key] || '')}" ${key === 'age' ? 'inputmode="numeric"' : ''} autocomplete="off"></label>`).join('')}</div>`;
+}
+
+function wirePatientFields(targetRecords){
+  mainScroll.querySelectorAll('[data-patient-field]').forEach(input => {
+    input.addEventListener('input', () => {
+      const key = input.dataset.patientField;
+      const value = input.value.trim() || 'NIL';
+      targetRecords.forEach(record => {
+        record.patientData = {...patientIdentity(record), [key]:value};
+        // Identity is held separately from the clinical note.
+        record.transcription = String(record.transcription || '').replace(/^(?:Patient Name|Age|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
+        record.saved = false;
+        markRecordDirty(record);
+        syncRecordCollections(record);
+      });
+    });
+    input.addEventListener('change', async () => {
+      try{
+        await Promise.all(targetRecords.map(record => persistRecord(record, {patientData:record.patientData, transcription:record.transcription, updatedAt:serverTimestamp()})));
+        renderEntries();
+      }catch(error){ showToast('Patient details are kept locally. Please press Save to retry.'); }
+    });
+  });
+}
+
 function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMalayalam !== false} = {}){
   const normalized = formatStoredReviewNotes(String(text || '')).replace(/\r\n/g, '\n');
   const prescriptionPattern = new RegExp(`(^|\\n)(Prescription:)\\s*\\n([\\s\\S]*?)(?=\\n+${NOTE_SECTION_LOOKAHEAD}:|$)`, 'gi');
@@ -4904,6 +4947,15 @@ function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMala
 }
 
 function editorPlainText(editor){
+  if (editor?.querySelector('.note-review-metadata')){
+    const clone = editor.cloneNode(true);
+    clone.style.cssText = 'position:fixed;left:-10000px;top:0;';
+    clone.querySelectorAll('.note-review-metadata').forEach(node => { node.hidden = false; });
+    document.body.appendChild(clone);
+    const text = clone.innerText.replace(/\u00a0/g, ' ');
+    clone.remove();
+    return text;
+  }
   return (editor?.value ?? editor?.innerText ?? '').replace(/\u00a0/g, ' ');
 }
 
@@ -5752,15 +5804,17 @@ function renderGeneratedNote(draft){
   mainScroll.innerHTML = `
     <div class="generated-note">
       <section class="generated-note-card">
+        ${patientFieldsHtml(draft)}
         ${hideEmptyReview ? '' : `<div class="generated-note-head">
           <div>
             <h1 class="generated-note-title">${escapeHtml(title)}</h1>
           </div>
         </div>
-        <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${richNoteHtml(displayText)}</div>`}
+        <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${clinicalNoteHtml(displayText)}</div>`}
         <section id="previousPatientNotes" aria-label="Previous patient notes">${previousPatientNotesHtml(draft)}</section>
       </section>
     </div>`;
+  wirePatientFields([draft]);
   const editor = document.getElementById('generatedNoteEditor');
   resizeNoteEditor(editor);
   if (canEdit && editor){
@@ -8350,7 +8404,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=17', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=18', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

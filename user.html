@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#1F5F52">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2110,6 +2110,23 @@
     .app.sidebar-open .settings-wrap #settingsBtn{ display:none; }
     .app.sidebar-open .settings-wrap .settings-menu{ top:76px; max-width:calc(min(86vw,330px) - 28px); }
     .settings-wrap:hover .settings-menu:not(.open), .settings-wrap:focus-within .settings-menu:not(.open){ display:none; }
+  }
+  @media (max-width:600px){
+    body.mobile-typing .app.authenticated,
+    body.mobile-typing .main{
+      height:var(--mobile-visible-height,100dvh);
+      max-height:var(--mobile-visible-height,100dvh);
+      min-height:0;
+    }
+    body.mobile-typing .main-scroll{
+      padding-bottom:calc(200px + env(safe-area-inset-bottom));
+      scroll-padding-bottom:100px;
+    }
+    body.mobile-typing .mobile-bottom-actions{
+      bottom:var(--mobile-keyboard-inset,0px);
+    }
+    body.mobile-typing .note-editor,
+    body.mobile-typing [contenteditable="true"]{ scroll-margin-bottom:100px; }
   }
 </style>
 </head>
@@ -8274,6 +8291,39 @@ deleteBtn.addEventListener('click', async () => {
   }
 });
 
+// Keep the editor scrollable above the on-screen keyboard.
+function syncMobileKeyboard(keepCaretVisible = false){
+  const active = document.activeElement;
+  const editing = mobileUserLayout.matches && Boolean(active &&
+    (active.isContentEditable || active.matches('textarea,input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="date"])')));
+  document.body.classList.toggle('mobile-typing', editing);
+  const viewport = window.visualViewport;
+  const visibleHeight = viewport?.height || window.innerHeight;
+  const inset = Math.max(0, window.innerHeight - visibleHeight - (viewport?.offsetTop || 0));
+  document.documentElement.style.setProperty('--mobile-visible-height', `${visibleHeight}px`);
+  document.documentElement.style.setProperty('--mobile-keyboard-inset', `${editing ? inset : 0}px`);
+  if (!editing || !keepCaretVisible || !mainScroll.contains(active)) return;
+  requestAnimationFrame(() => {
+    const selection = window.getSelection();
+    let rect = active.getBoundingClientRect();
+    if (active.isContentEditable && selection?.rangeCount && active.contains(selection.anchorNode)){
+      const range = selection.getRangeAt(0).cloneRange();
+      range.collapse(false);
+      const caret = range.getClientRects()[0];
+      if (caret) rect = caret;
+    }
+    const scrollRect = mainScroll.getBoundingClientRect();
+    const visibleBottom = Math.min(scrollRect.bottom, (viewport?.offsetTop || 0) + visibleHeight) - 90;
+    if (rect.bottom > visibleBottom) mainScroll.scrollTop += rect.bottom - visibleBottom;
+    else if (rect.top < scrollRect.top + 12) mainScroll.scrollTop -= scrollRect.top + 12 - rect.top;
+  });
+}
+document.addEventListener('focusin', () => syncMobileKeyboard(true));
+document.addEventListener('focusout', () => setTimeout(() => syncMobileKeyboard(), 0));
+mainScroll.addEventListener('input', () => syncMobileKeyboard(true));
+window.visualViewport?.addEventListener('resize', () => syncMobileKeyboard(true));
+window.addEventListener('resize', () => syncMobileKeyboard(true));
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     let refreshingForUpdate = false;
@@ -8298,7 +8348,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=10', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=11', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

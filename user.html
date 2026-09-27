@@ -4984,14 +4984,23 @@ function currentPrintVisitRecord(){
   return activeIndex !== null ? records[activeIndex] : null;
 }
 
+function recordHasPatientInstructions(record){
+  return Boolean(treatmentPlanAndPrescriptionText(record?.transcription || ''));
+}
+
+function activePatientInstructionsText(){
+  const record = currentPrintPrescriptionRecord();
+  return record ? treatmentPlanAndPrescriptionText(currentRecordSourceText(record)) : '';
+}
+
 function currentPrintPrescriptionRecord(){
   if (selectedVisitType === 'OP' && selectedOpTimelineKey){
     const selectedRecord = selectedOpTimelineRecord();
-    if (selectedRecord) return recordHasPrescription(selectedRecord) ? selectedRecord : null;
-    return latestOpTimelineRecord(recordHasPrescription);
+    if (selectedRecord) return recordHasPatientInstructions(selectedRecord) ? selectedRecord : null;
+    return latestOpTimelineRecord(recordHasPatientInstructions);
   }
   const record = activeIndex !== null ? records[activeIndex] : null;
-  return record && recordHasPrescription(record) ? record : null;
+  return record && recordHasPatientInstructions(record) ? record : null;
 }
 
 function prescriptionTextFromNote(text){
@@ -5059,16 +5068,16 @@ function updatePrintMenuState(){
 function updatePrescriptionPrintButton(){
   if (!rxPrintBtn) return;
   const hasPrintableRecord = hasPrintableActiveRecord();
-  const prescription = hasPrintableRecord ? activePrescriptionText() : '';
+  const prescription = hasPrintableRecord ? activePatientInstructionsText() : '';
   rxPrintBtn.classList.toggle('visible', hasPrintableRecord);
   rxPrintBtn.disabled = !prescription;
   printMenuBtn.disabled = !prescription;
   emailMenuBtn.disabled = !prescription;
   mobileEmailBtn.disabled = !prescription;
-  rxPrintBtn.title = prescription ? 'Print Prescription' : 'No prescription found in selected entry';
+  rxPrintBtn.title = prescription ? 'Print Prescription' : 'No prescription or treatment plan found in selected entry';
   emailRxBtn.classList.toggle('visible', hasPrintableRecord);
   emailRxBtn.disabled = !prescription;
-  emailRxBtn.title = prescription ? 'Email Prescription' : 'No prescription found in selected entry';
+  emailRxBtn.title = prescription ? 'Email Prescription' : 'No prescription or treatment plan found in selected entry';
   updatePrintMenuState();
 }
 
@@ -5137,7 +5146,7 @@ function setEmailStatus(message, tone = ''){
 
 function openEmailDialog(mode = 'visit'){
   if (!hasPrintableActiveRecord()) return;
-  if (mode === 'prescription' && !activePrescriptionText()) return;
+  if (mode === 'prescription' && !activePatientInstructionsText()) return;
   pendingEmailMode = mode === 'prescription' ? 'prescription' : 'visit';
   closePrintMenu();
   closeEmailMenu();
@@ -5303,7 +5312,7 @@ function visitNotePrintHtml(note, title = 'WOYZ Notes Print'){
 }
 
 function prescriptionPrintHtml(activeRecord, prescription, sourceText, title = 'WOYZ Prescription Print'){
-  const treatmentPlan = noteSectionText(sourceText, 'Treatment Plan');
+  const treatmentPlan = noteSectionText(sourceText, 'Treatment Plan').replace(/^Treatment Plan:\s*/i, '');
   const identity = patientIdentity(activeRecord);
   const ageLabel = /^nil$/i.test(identity.age) ? 'NIL' : `${identity.age} years`;
   const patientLine = [
@@ -5432,9 +5441,8 @@ function prescriptionPrintHtml(activeRecord, prescription, sourceText, title = '
       <div class="rx">
         <h1>${escapeHtml(displayPatientName(activeRecord))}</h1>
         <div class="patient-line">${escapeHtml(patientLine)}</div>
-        ${treatmentPlan ? `<section class="rx-treatment">${richNoteHtml(anonymizeTextForRecord(treatmentPlan, activeRecord), {includeMalayalam:false})}</section>` : ''}
-        <div class="rx-heading">Rx / ADVICE</div>
-        <div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false})}</div>
+        ${prescription ? `<div class="rx-heading">RX</div><div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false})}</div>` : ''}
+        ${treatmentPlan ? `<div class="rx-heading">ADVICE</div><section class="rx-treatment">${richNoteHtml(anonymizeTextForRecord(treatmentPlan, activeRecord), {includeMalayalam:false})}</section>` : ''}
         ${layout.signature.enabled !== false && layout.signature.text ? `<section class="rx-print-signature ${layoutBlockClass(layout.signature)}">${printBlockHtml(layout.signature, {firstLineStrong:true})}</section>` : ''}
       </div>
     </section>
@@ -5457,8 +5465,8 @@ function buildEmailPayload(to, mode = 'visit'){
   const prescription = mode === 'prescription' ? activePrescriptionText() : '';
   const note = mode === 'prescription'
     ? anonymizeTextForRecord([
-        noteSectionText(sourceText, 'Treatment Plan'),
-        prescription ? `Prescription:\n${prescription}` : ''
+        prescription ? `RX:\n${prescription}` : '',
+        noteSectionText(sourceText, 'Treatment Plan').replace(/^Treatment Plan:/i, 'ADVICE:')
       ].filter(Boolean).join('\n\n'), activeRecord)
     : anonymizeTextForRecord(displayNoteTextForRecord(activeRecord, sourceText), activeRecord);
   if (!note) throw new Error('This note is empty.');
@@ -7880,7 +7888,7 @@ rxPrintBtn.addEventListener('click', () => {
   const activeRecord = currentPrintPrescriptionRecord();
   if (!activeRecord) return;
   const prescription = activePrescriptionText();
-  if (!prescription) return;
+  if (!activePatientInstructionsText()) return;
   const sourceText = currentRecordSourceText(activeRecord);
   const printWindow = createPrintWindow();
   if (!printWindow){
@@ -8437,7 +8445,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=22', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=23', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

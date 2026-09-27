@@ -3514,14 +3514,8 @@ function renderPatientTimeline(key){
   mainScroll.innerHTML = `
     <div class="timeline-wrap">
       <div class="timeline-header">
-        <div>
-          <div class="timeline-kicker">Previous records</div>
-          <h1 class="timeline-title">${escapeHtml(displayPatientName(latest))}</h1>
-          <div class="timeline-meta">${escapeHtml(patientMetaLine(latest))}</div>
-        </div>
         <button class="timeline-add-btn" id="addTimelinePatientTodayBtn" type="button">Add to Today</button>
       </div>
-      <div class="timeline-count">${timelineRecords.length} note${timelineRecords.length === 1 ? '' : 's'} · All entries</div>
       ${renderedNotes}
     </div>`;
   document.getElementById('addTimelinePatientTodayBtn')?.addEventListener('click', () => addTimelinePatientToToday(latest));
@@ -8356,7 +8350,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=16', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=17', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

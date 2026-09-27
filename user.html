@@ -2138,10 +2138,17 @@
   #previousPatientNotes:empty{ display:none; }
   .patient-history-heading{ margin:0 0 18px; font:700 14px 'Inter',sans-serif; color:var(--muted); }
   #previousPatientNotes .note-editor{ min-height:0; }
-  .patient-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:24px;}
-  .patient-fields label{font:600 13px 'Inter',sans-serif;color:var(--muted);}
-  .patient-fields input{display:block;box-sizing:border-box;width:100%;margin-top:6px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface,#fff);color:var(--text);font:inherit;font-size:16px;}
-  @media(max-width:700px){.patient-fields{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .patient-fields{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:6px 10px;margin-bottom:12px;}
+  .patient-fields label,.patient-age-sex>span{font:600 12px 'Inter',sans-serif;color:var(--muted);}
+  .patient-fields input{display:block;box-sizing:border-box;width:100%;min-width:0;height:36px;margin-top:3px;padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface,#fff);color:var(--text);font:400 16px 'Inter',sans-serif;}
+  .patient-age-sex-inputs{display:flex;align-items:center;height:36px;box-sizing:border-box;margin-top:3px;border:1px solid var(--border);border-radius:7px;background:var(--surface,#fff);}
+  .patient-age-sex-inputs input{border:0;background:transparent;margin:0;height:34px;}
+  .patient-age-sex-inputs input[data-patient-field="age"]{flex:0 0 40%;width:40%;}
+  .patient-age-sex-inputs input[data-patient-field="sex"]{flex:1;width:0;}
+  .patient-age-sex-inputs>span{color:var(--muted);}
+  .patient-fields .patient-uhid{grid-column:1 / -1;display:flex;align-items:center;gap:9px;}
+  .patient-fields .patient-uhid input{margin-top:0;flex:1;}
+
 </style>
 </head>
 <body>
@@ -4904,8 +4911,12 @@ function clinicalNoteHtml(text){
 
 function patientFieldsHtml(record){
   const identity = patientIdentity(record);
-  return `<div class="patient-fields" aria-label="Patient details">${[['name','Name'],['age','Age'],['uhid','UHID'],['sex','Sex']].map(([key,label]) =>
-    `<label>${label}<input data-patient-field="${key}" value="${escapeHtml(isNilLike(identity[key]) ? '' : identity[key] || '')}" ${key === 'age' ? 'inputmode="numeric"' : ''} autocomplete="off"></label>`).join('')}</div>`;
+  const input = (key, label) => `<input data-patient-field="${key}" aria-label="${label}" value="${escapeHtml(isNilLike(identity[key]) ? '' : identity[key] || '')}" ${key === 'age' ? 'inputmode="numeric"' : ''} autocomplete="off">`;
+  return `<div class="patient-fields" aria-label="Patient details">
+    <label class="patient-name">Name${input('name', 'Name')}</label>
+    <div class="patient-age-sex"><span>Age / Sex</span><div class="patient-age-sex-inputs">${input('age', 'Age')}<span aria-hidden="true">/</span>${input('sex', 'Sex')}</div></div>
+    <label class="patient-uhid">UHID${input('uhid', 'UHID')}</label>
+  </div>`;
 }
 
 function wirePatientFields(targetRecords){
@@ -8438,7 +8449,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=20', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=21', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

@@ -11,9 +11,9 @@ Preserves the main app, personal worklist, mobile/desktop workflows and PWA asse
 
 - Firebase Web app: registered and configured for trjohn-woyz.
 - Firestore: default database created in asia-south1 (Mumbai), deletion protection enabled; rules deployed successfully.
-- Email/password Authentication: enabled. Initial users must be created under Firebase Authentication > Users.
+- Email/password Authentication: enabled. The permitted account is selected by Firebase UID.
 - Single-user workflow: no master administration, user groups, mapped accounts, or cross-account queries. The default worklist at index.html displays only the signed-in account’s notes.
-- Firestore permits each authenticated account to access only its own profile and notes; all group and cross-account access is denied.
+- Both pages and deployed Firestore rules permit only UID `8ImNHj4364X7vU2dqH3pJ1Yha6x1` to access its own profile and notes. All other accounts, group access, and cross-account access are denied.
 - Email delivery: disabled because the handover does not include its backend. The original email service is disconnected.
 - Voice generation: retains the original Gemini integration and requires the user's Gemini API key in app settings.
 

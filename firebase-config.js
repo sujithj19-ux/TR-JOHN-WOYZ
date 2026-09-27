@@ -6,3 +6,9 @@ export const firebaseConfig = {
   "authDomain": "trjohn-woyz.firebaseapp.com",
   "messagingSenderId": "419991970473"
 };
+
+// Only this Firebase Authentication account can use this installation.
+export const allowedUserUid = "8ImNHj4364X7vU2dqH3pJ1Yha6x1";
+export function isAllowedUser(user) {
+  return user?.uid === allowedUserUid;
+}

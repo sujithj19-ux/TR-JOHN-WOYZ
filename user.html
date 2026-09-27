@@ -2493,7 +2493,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import { browserLocalPersistence, getAuth, onAuthStateChanged, setPersistence, signInAnonymously, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
 import { getFirestore, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, getDocs, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, isAllowedUser } from './firebase-config.js';
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -4475,6 +4475,12 @@ loginForm.addEventListener('submit', async event => {
 });
 
 onAuthStateChanged(auth,user => {
+  if (user && !isAllowedUser(user)) {
+    loginError.textContent = 'This account is not authorized to use this app.';
+    firebaseSignOut(auth).catch(error => console.error('Unable to sign out unauthorized account:', error));
+    user = null;
+  }
+
   currentUser = user;
   if (userProfileUnsubscribe) userProfileUnsubscribe();
   userProfileUnsubscribe = null;
@@ -8291,7 +8297,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=3', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=4', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

@@ -3,7 +3,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedInAs(userId) {
-      return request.auth != null && request.auth.uid == userId;
+      return request.auth != null
+        && request.auth.uid == "8ImNHj4364X7vU2dqH3pJ1Yha6x1"
+        && request.auth.uid == userId;
     }
 
     function userProfileFields() {

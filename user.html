@@ -6844,13 +6844,10 @@ function isTransientGeminiError(status, message){
 }
 
 function userSafeNoteServiceMessage(message){
-  const raw = String(message || '').trim();
-  if (!raw) return 'Please try again.';
-  if (/api.?key|permission.denied|unauthenticated|unauthorized|referer|referrer|forbidden/i.test(raw)) return 'Check the authorization key in Settings on this device and its website restrictions.';
-  if (/mime|codec|audio.*(?:format|unsupported)|unsupported.*audio/i.test(raw)) return 'The note service could not read this recording format. Please try a fresh recording.';
-  if (/too large|payload.*size|request.*size/i.test(raw)) return 'This recording is too large. Please use a shorter recording.';
-  if (/gemini|generativelanguage|google|model|api/i.test(raw)) return 'The note service is temporarily busy. Please try again.';
-  return raw;
+  const raw = String(message || '').trim()
+    .replace(/AIza[\w-]+/g, '[redacted key]')
+    .replace(/([?&]key=)[^&\s]+/gi, '$1[redacted]');
+  return raw ? raw.slice(0, 600) : 'Please try again.';
 }
 
 function noteServiceError(message, retryable = false){
@@ -6920,10 +6917,10 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
       clearTimeout(timeoutId);
     }
     const payload = await response.json().catch(() => ({}));
-    lastMessage = payload.error?.message || response.statusText || 'Note processing failed.';
+    lastMessage = String(payload.error?.message || response.statusText || 'Note processing failed.').split(apiKey).join('[redacted key]');
     if (response.ok) return payload;
     if (!isTransientGeminiError(response.status, lastMessage) || attempt === maxAttempts){
-      throw noteServiceError(lastMessage, isTransientGeminiError(response.status, lastMessage));
+      throw noteServiceError(`HTTP ${response.status}${payload.error?.status ? ' (' + payload.error.status + ')' : ''}: ${lastMessage}`, isTransientGeminiError(response.status, lastMessage));
     }
     const nextModel = attemptPlan[attempt]?.model;
     onRetry?.(`Note service is busy. Retrying ${nextModel !== plan.model ? 'with backup service' : 'automatically'} (${attempt + 1}/${maxAttempts})...`);
@@ -8348,7 +8345,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=11', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=12', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

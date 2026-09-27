@@ -2249,15 +2249,15 @@
       <button class="btn discharge-btn" id="dischargeBtn" aria-label="Discharge IP patient" title="Discharge IP patient">Discharge</button>
       <button class="btn btn-copy" id="copyBtn" style="display:none;">Copy</button>
       <div class="print-wrap" id="printWrap">
-        <button class="btn print-menu-btn" id="printMenuBtn" type="button" aria-label="Print options" aria-haspopup="true" aria-expanded="false">Print</button>
-        <div class="print-menu" id="printMenu">
+        <button class="btn print-menu-btn" id="printMenuBtn" type="button" aria-label="Print prescription">Print</button>
+        <div class="print-menu" id="printMenu" hidden style="display:none!important">
           <button class="btn rx-print-btn" id="rxPrintBtn" type="button" aria-label="Print prescription" title="Print Prescription">Prescription</button>
           <button class="btn print-btn" id="printBtn" type="button" aria-label="Print visit note" title="Print visit note">Visit Note</button>
         </div>
       </div>
       <div class="email-wrap" id="emailWrap">
-        <button class="btn email-menu-btn" id="emailMenuBtn" type="button" aria-label="Email options" aria-haspopup="true" aria-expanded="false">Email</button>
-        <div class="email-menu" id="emailMenu">
+        <button class="btn email-menu-btn" id="emailMenuBtn" type="button" aria-label="Email prescription">Email</button>
+        <div class="email-menu" id="emailMenu" hidden style="display:none!important">
           <button class="btn email-rx-btn" id="emailRxBtn" type="button" aria-label="Email prescription" title="Email Prescription">Prescription</button>
           <button class="btn email-visit-btn" id="emailVisitBtn" type="button" aria-label="Email visit note" title="Email visit note">Visit Note</button>
         </div>
@@ -2318,8 +2318,8 @@
   </main>
 
   <nav class="mobile-bottom-actions hidden" id="mobileBottomActions" aria-label="Note actions">
-    <button class="mobile-action" id="mobileCopyBtn" aria-label="Copy note">
-      Copy
+    <button class="mobile-action" id="mobileEmailBtn" aria-label="Email prescription">
+      Email
     </button>
     <button class="mobile-action" id="mobileReviewBtn" aria-label="Review note dictation">
       Review Note
@@ -2662,7 +2662,7 @@ const mobileListBtn = document.getElementById('mobileListBtn');
 const mobileHomeBtn = document.getElementById('mobileHomeBtn');
 const mobileBackdrop = document.getElementById('mobileBackdrop');
 const mobileBottomActions = document.getElementById('mobileBottomActions');
-const mobileCopyBtn = document.getElementById('mobileCopyBtn');
+const mobileEmailBtn = document.getElementById('mobileEmailBtn');
 const mobileReviewBtn = document.getElementById('mobileReviewBtn');
 const mobileRecordBtn = document.getElementById('mobileRecordBtn');
 const mobileAddNoteBtn = document.getElementById('mobileAddNoteBtn');
@@ -5062,6 +5062,9 @@ function updatePrescriptionPrintButton(){
   const prescription = hasPrintableRecord ? activePrescriptionText() : '';
   rxPrintBtn.classList.toggle('visible', hasPrintableRecord);
   rxPrintBtn.disabled = !prescription;
+  printMenuBtn.disabled = !prescription;
+  emailMenuBtn.disabled = !prescription;
+  mobileEmailBtn.disabled = !prescription;
   rxPrintBtn.title = prescription ? 'Print Prescription' : 'No prescription found in selected entry';
   emailRxBtn.classList.toggle('visible', hasPrintableRecord);
   emailRxBtn.disabled = !prescription;
@@ -7762,7 +7765,7 @@ topbarPatient.addEventListener('keydown', event => {
   }
 });
 mobileBackdrop.addEventListener('click', closeMobileSidebar);
-mobileCopyBtn.addEventListener('click', () => copyBtn.click());
+mobileEmailBtn.addEventListener('click', () => openEmailDialog('prescription'));
 mobileReviewBtn.addEventListener('click', openContinuationDock);
 mobileRecordBtn.addEventListener('click', async event => {
   event.preventDefault();
@@ -8064,23 +8067,8 @@ timelineMenu.addEventListener('click', event => {
   renderEntries();
 });
 
-printMenuBtn.addEventListener('click', event => {
-  event.stopPropagation();
-  clearTimeout(printCloseTimer);
-  closeEmailMenu();
-  const isOpen = printMenu.classList.toggle('open');
-  printMenuBtn.classList.toggle('open', isOpen);
-  printMenuBtn.setAttribute('aria-expanded', String(isOpen));
-});
-
-emailMenuBtn.addEventListener('click', event => {
-  event.stopPropagation();
-  clearTimeout(emailCloseTimer);
-  closePrintMenu();
-  const isOpen = emailMenu.classList.toggle('open');
-  emailMenuBtn.classList.toggle('open', isOpen);
-  emailMenuBtn.setAttribute('aria-expanded', String(isOpen));
-});
+printMenuBtn.addEventListener('click', () => rxPrintBtn.click());
+emailMenuBtn.addEventListener('click', () => openEmailDialog('prescription'));
 emailRxBtn.addEventListener('click', () => openEmailDialog('prescription'));
 emailVisitBtn.addEventListener('click', () => openEmailDialog('visit'));
 emailCloseBtn.addEventListener('click', closeEmailDialog);
@@ -8132,9 +8120,9 @@ templateWrap.addEventListener('pointerenter', openTemplateMenu);
 templateWrap.addEventListener('pointerleave', scheduleCloseTemplateMenu);
 timelineMenuWrap.addEventListener('pointerenter', openTimelineMenu);
 timelineMenuWrap.addEventListener('pointerleave', scheduleCloseTimelineMenu);
-printWrap.addEventListener('pointerenter', openPrintMenu);
+
 printWrap.addEventListener('pointerleave', scheduleClosePrintMenu);
-emailWrap.addEventListener('pointerenter', openEmailMenu);
+
 emailWrap.addEventListener('pointerleave', scheduleCloseEmailMenu);
 settingsWrap.addEventListener('pointerenter', () => { if (!mobileUserLayout.matches) openSettings(); });
 settingsWrap.addEventListener('pointerleave', () => { if (!mobileUserLayout.matches) scheduleCloseSettings(); });
@@ -8449,7 +8437,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=21', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=22', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

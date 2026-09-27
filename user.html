@@ -2149,6 +2149,10 @@
   .patient-fields .patient-uhid{grid-column:1 / -1;display:flex;align-items:center;gap:9px;}
   .patient-fields .patient-uhid input{margin-top:0;flex:1;}
 
+  .output-section-heading{display:inline-flex;align-items:center;justify-content:space-between;width:100%;gap:12px;}
+  .output-section-check{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;}
+  .output-section-check input{width:18px;height:18px;margin:0;accent-color:var(--teal);cursor:pointer;}
+  #mobileEmailBtn:disabled,#printMenuBtn:disabled,#emailMenuBtn:disabled{opacity:.4;cursor:not-allowed;}
 </style>
 </head>
 <body>
@@ -3178,7 +3182,7 @@ function previousPatientNotesHtml(draft){
   return history.map(record => `
     <article class="op-all-entry">
       <h3 class="op-all-entry-title">${escapeHtml(formatVisitDateLabel(record.visitDate))}</h3>
-      <div class="note-editor" role="region" aria-label="Previous note from ${escapeHtml(record.visitDate || '')}">${clinicalNoteHtml(displayNoteTextForRecord(record, record.transcription || ''))}</div>
+      <div class="note-editor" role="region" aria-label="Previous note from ${escapeHtml(record.visitDate || '')}">${clinicalNoteHtml(displayNoteTextForRecord(record, record.transcription || ''), record)}</div>
     </article>
   `).join('');
 }
@@ -3518,7 +3522,7 @@ function renderPatientTimeline(key){
     return `
       <article class="timeline-entry">
         <h2 class="timeline-entry-title">${escapeHtml(timelineTitleForRecord(record))}</h2>
-        <div class="timeline-note">${clinicalNoteHtml(displayText)}</div>
+        <div class="timeline-note">${clinicalNoteHtml(displayText, record)}</div>
       </article>
     `;
   }).join('');
@@ -3586,7 +3590,7 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
     return `
       <article class="op-all-entry">
         ${entryTitle}
-        <div class="op-all-entry-editor note-editor" data-op-all-entry-editor="${escapeHtml(record.firestoreId)}" data-op-all-entry-owner="${escapeHtml(noteOwnerUid(record) || '')}" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable ${escapeHtml(opTimelineEntryLabel(record))}">${clinicalNoteHtml(displayText)}</div>
+        <div class="op-all-entry-editor note-editor" data-op-all-entry-editor="${escapeHtml(record.firestoreId)}" data-op-all-entry-owner="${escapeHtml(noteOwnerUid(record) || '')}" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable ${escapeHtml(opTimelineEntryLabel(record))}">${clinicalNoteHtml(displayText, record)}</div>
       </article>
     `;
   }).join('');
@@ -3666,7 +3670,7 @@ function renderIpPatientTimeline(key, date = selectedIpTimelineDate || dateInput
     return `
       <article class="timeline-entry" data-ip-timeline-note="${escapeHtml(section.record.firestoreId)}" data-ip-timeline-owner="${escapeHtml(noteOwnerUid(section.record) || '')}"${reviewAttribute} tabindex="0" role="button" aria-label="Open ${escapeHtml(section.title)}">
         <h2 class="timeline-entry-title">${escapeHtml(section.title)}</h2>
-        <div class="timeline-note">${clinicalNoteHtml(displayText)}</div>
+        <div class="timeline-note">${clinicalNoteHtml(displayText, record)}</div>
       </article>
     `;
   }).join('');
@@ -4903,11 +4907,56 @@ function simpleRichNoteHtml(text){
     .join('<br>');
 }
 
-function clinicalNoteHtml(text){
+const checkedOutputSections = new Set();
+let outputSelectionPatient = '';
+
+function clinicalNoteHtml(text, record){
   const clinical = String(text || '').replace(/^(?:Patient Name|Age|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
-  return richNoteHtml(clinical).replace(/<hr class="review-note-divider">(?:<strong>)?Review Note(?:\s*\([^)]*\))?:(?:<\/strong>)?/gi,
+  let html = richNoteHtml(clinical).replace(/<hr class="review-note-divider">(?:<strong>)?Review Note(?:\s*\([^)]*\))?:(?:<\/strong>)?/gi,
     match => `<span class="note-review-metadata" contenteditable="false" hidden>${match.replace(/<hr[^>]*>/, '')}</span>`);
+  if (!record?.firestoreId) return html;
+  const patientKey = `${noteOwnerUid(record)}:${patientSearchKey(record)}`;
+  if (outputSelectionPatient !== patientKey){ checkedOutputSections.clear(); outputSelectionPatient = patientKey; }
+  const counts = {Prescription:0, 'Treatment Plan':0};
+  return html.replace(/<strong>(Prescription|Treatment Plan):<\/strong>/g, (heading, label) => {
+    const index = counts[label]++;
+    const key = `${noteOwnerUid(record)}:${record.firestoreId}:${label}:${index}`;
+    return `<span class="output-section-heading">${heading}<span class="output-section-check" contenteditable="false"><input type="checkbox" data-output-section="${label}" data-output-index="${index}" data-output-record="${escapeHtml(record.firestoreId)}" data-output-owner="${escapeHtml(noteOwnerUid(record))}" data-output-key="${escapeHtml(key)}" aria-label="Include ${label} from ${escapeHtml(formatVisitDateLabel(record.visitDate))} in print or email" ${checkedOutputSections.has(key) ? 'checked' : ''}></span></span>`;
+  });
 }
+
+function outputSectionBodies(text, label){
+  const pattern = new RegExp(`(?:^|\\n)${escapeRegExp(label)}:[ \\t]*\\n([\\s\\S]*?)(?=\\n+(?:${NOTE_SECTION_LOOKAHEAD}):|$)`, 'gi');
+  return Array.from(String(text || '').matchAll(pattern), match => match[1].trim());
+}
+
+function selectedPatientOutput(){
+  const rx = [], advice = [];
+  let record = null;
+  for (const checkbox of mainScroll.querySelectorAll('[data-output-section]:checked')){
+    const candidate = [...records, ...allRecords].find(item => item.firestoreId === checkbox.dataset.outputRecord && noteOwnerUid(item) === checkbox.dataset.outputOwner && !item.isDeleted);
+    if (!candidate || noteOwnerUid(candidate) !== currentUser?.uid) continue;
+    if (record && patientSearchKey(record) !== patientSearchKey(candidate)) continue;
+    const container = checkbox.closest('.note-editor, .timeline-note');
+    const text = container ? editorPlainText(container) : candidate.transcription;
+    const body = outputSectionBodies(text, checkbox.dataset.outputSection)[Number(checkbox.dataset.outputIndex)];
+    if (!body || isNilLike(body)) continue;
+    record ||= candidate;
+    (checkbox.dataset.outputSection === 'Prescription' ? rx : advice).push(body);
+  }
+  const prescription = rx.join('\n\n');
+  const treatmentPlan = advice.join('\n\n');
+  return {record, prescription, sourceText:[prescription ? `Prescription:\n${prescription}` : '', treatmentPlan ? `Treatment Plan:\n${treatmentPlan}` : ''].filter(Boolean).join('\n\n')};
+}
+
+mainScroll.addEventListener('change', event => {
+  const checkbox = event.target.closest('[data-output-section]');
+  if (!checkbox) return;
+  if (checkbox.checked) checkedOutputSections.add(checkbox.dataset.outputKey);
+  else checkedOutputSections.delete(checkbox.dataset.outputKey);
+  updatePrescriptionPrintButton();
+});
+new MutationObserver(() => updatePrescriptionPrintButton()).observe(mainScroll, {childList:true, subtree:true});
 
 function patientFieldsHtml(record){
   const identity = patientIdentity(record);
@@ -4958,9 +5007,10 @@ function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMala
 }
 
 function editorPlainText(editor){
-  if (editor?.querySelector('.note-review-metadata')){
+  if (editor?.querySelector('.note-review-metadata, .output-section-check')){
     const clone = editor.cloneNode(true);
     clone.style.cssText = 'position:fixed;left:-10000px;top:0;';
+    clone.querySelectorAll('.output-section-check').forEach(node => node.remove());
     clone.querySelectorAll('.note-review-metadata').forEach(node => { node.hidden = false; });
     document.body.appendChild(clone);
     const text = clone.innerText.replace(/\u00a0/g, ' ');
@@ -4989,18 +5039,11 @@ function recordHasPatientInstructions(record){
 }
 
 function activePatientInstructionsText(){
-  const record = currentPrintPrescriptionRecord();
-  return record ? treatmentPlanAndPrescriptionText(currentRecordSourceText(record)) : '';
+  return selectedPatientOutput().sourceText;
 }
 
 function currentPrintPrescriptionRecord(){
-  if (selectedVisitType === 'OP' && selectedOpTimelineKey){
-    const selectedRecord = selectedOpTimelineRecord();
-    if (selectedRecord) return recordHasPatientInstructions(selectedRecord) ? selectedRecord : null;
-    return latestOpTimelineRecord(recordHasPatientInstructions);
-  }
-  const record = activeIndex !== null ? records[activeIndex] : null;
-  return record && recordHasPatientInstructions(record) ? record : null;
+  return selectedPatientOutput().record;
 }
 
 function prescriptionTextFromNote(text){
@@ -5031,10 +5074,7 @@ function treatmentPlanAndPrescriptionText(text){
 }
 
 function activePrescriptionText(){
-  const record = currentPrintPrescriptionRecord();
-  if (!record || noteVisitType(record) !== 'OP') return '';
-  const sourceText = currentRecordSourceText(record);
-  return prescriptionTextFromNote(sourceText);
+  return selectedPatientOutput().prescription;
 }
 
 function hasPrintableActiveRecord(){
@@ -5054,7 +5094,7 @@ function hidePrintMenuState(){
 }
 
 function updatePrintMenuState(){
-  const printable = hasPrintableActiveRecord();
+  const printable = hasPrintableActiveRecord() || Boolean(mainScroll.querySelector('[data-output-section]'));
   printWrap.classList.toggle('visible', printable);
   printBtn.classList.toggle('visible', printable);
   emailWrap.classList.toggle('visible', printable);
@@ -5067,17 +5107,17 @@ function updatePrintMenuState(){
 
 function updatePrescriptionPrintButton(){
   if (!rxPrintBtn) return;
-  const hasPrintableRecord = hasPrintableActiveRecord();
+  const hasPrintableRecord = hasPrintableActiveRecord() || Boolean(mainScroll.querySelector('[data-output-section]'));
   const prescription = hasPrintableRecord ? activePatientInstructionsText() : '';
   rxPrintBtn.classList.toggle('visible', hasPrintableRecord);
   rxPrintBtn.disabled = !prescription;
   printMenuBtn.disabled = !prescription;
   emailMenuBtn.disabled = !prescription;
   mobileEmailBtn.disabled = !prescription;
-  rxPrintBtn.title = prescription ? 'Print Prescription' : 'No prescription or treatment plan found in selected entry';
+  rxPrintBtn.title = prescription ? 'Print Prescription' : 'Check at least one Prescription or Treatment Plan section';
   emailRxBtn.classList.toggle('visible', hasPrintableRecord);
   emailRxBtn.disabled = !prescription;
-  emailRxBtn.title = prescription ? 'Email Prescription' : 'No prescription or treatment plan found in selected entry';
+  emailRxBtn.title = prescription ? 'Email Prescription' : 'Check at least one Prescription or Treatment Plan section';
   updatePrintMenuState();
 }
 
@@ -5145,7 +5185,7 @@ function setEmailStatus(message, tone = ''){
 }
 
 function openEmailDialog(mode = 'visit'){
-  if (!hasPrintableActiveRecord()) return;
+  if (mode !== 'prescription' && !hasPrintableActiveRecord()) return;
   if (mode === 'prescription' && !activePatientInstructionsText()) return;
   pendingEmailMode = mode === 'prescription' ? 'prescription' : 'visit';
   closePrintMenu();
@@ -5461,7 +5501,7 @@ function emailTitleForRecord(record){
 function buildEmailPayload(to, mode = 'visit'){
   const activeRecord = mode === 'prescription' ? currentPrintPrescriptionRecord() : currentPrintVisitRecord();
   if (!activeRecord) throw new Error('No note is selected.');
-  const sourceText = currentRecordSourceText(activeRecord);
+  const sourceText = mode === 'prescription' ? activePatientInstructionsText() : currentRecordSourceText(activeRecord);
   const prescription = mode === 'prescription' ? activePrescriptionText() : '';
   const note = mode === 'prescription'
     ? anonymizeTextForRecord([
@@ -5833,7 +5873,7 @@ function renderGeneratedNote(draft){
           </div>
         </div>
         <h2 class="op-all-entry-title">${escapeHtml(formatVisitDateLabel(draft.visitDate))}</h2>
-        <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${clinicalNoteHtml(displayText)}</div>`}
+        <div class="note-editor ${anonymizeEnabled ? 'anonymized' : ''}" id="generatedNoteEditor" data-note-id="${escapeHtml(draft.firestoreId || '')}" data-note-owner="${escapeHtml(noteOwnerUid(draft) || '')}" contenteditable="${canEdit ? 'true' : 'false'}" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable generated note">${clinicalNoteHtml(displayText, draft)}</div>`}
         <section id="previousPatientNotes" aria-label="Previous patient notes">${previousPatientNotesHtml(draft)}</section>
       </section>
     </div>`;
@@ -7889,10 +7929,10 @@ rxPrintBtn.addEventListener('click', () => {
   if (!activeRecord) return;
   const prescription = activePrescriptionText();
   if (!activePatientInstructionsText()) return;
-  const sourceText = currentRecordSourceText(activeRecord);
+  const sourceText = activePatientInstructionsText();
   const printWindow = createPrintWindow();
   if (!printWindow){
-    window.print();
+    window.alert('Allow pop-ups to print the selected sections.');
     return;
   }
   printWindow.document.write(prescriptionPrintHtml(activeRecord, prescription, sourceText, 'WOYZ Prescription Print'));
@@ -8445,7 +8485,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=23', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=24', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

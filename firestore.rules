@@ -6,20 +6,6 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    // Master administrator will be configured explicitly after account creation.
-    function isAdmin() {
-      return false;
-    }
-
-    function sharedWith(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.sharedWith;
-    }
-
-    function isMappedTo(userId) {
-      return request.auth != null
-        && request.auth.uid in sharedWith(userId);
-    }
-
     function userProfileFields() {
       return [
         "credentialName",
@@ -31,76 +17,21 @@ service cloud.firestore {
       ];
     }
 
-    function mappingFields() {
-      return [
-        "groupIds",
-        "adminGroupIds",
-        "adminSharedWith",
-        "sharedWith",
-        "mappingUpdatedAt",
-        "mappingUpdatedBy"
-      ];
-    }
-
     match /users/{userId} {
-      allow read: if signedInAs(userId) || isAdmin() || isMappedTo(userId);
+      allow read: if signedInAs(userId);
       allow create: if signedInAs(userId)
         && request.resource.data.keys().hasOnly(userProfileFields());
-      allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly(mappingFields())
-        && request.resource.data.mappingUpdatedBy == request.auth.uid;
       allow update: if signedInAs(userId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(userProfileFields());
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(mappingFields())
-        && request.resource.data.mappingUpdatedBy == request.auth.uid;
       allow delete: if false;
 
       match /notes/{noteId} {
-        allow read: if signedInAs(userId) || isAdmin() || isMappedTo(userId);
-        allow delete: if !isAdmin() && (signedInAs(userId) || isMappedTo(userId));
-
-        allow create: if signedInAs(userId)
+        allow read, delete: if signedInAs(userId);
+        allow create, update: if signedInAs(userId)
           && request.resource.data.visitDate is string
           && request.resource.data.isDraft is bool
           && request.resource.data.transcription is string;
-
-        allow update: if (signedInAs(userId) || isAdmin() || isMappedTo(userId))
-          && request.resource.data.visitDate is string
-          && request.resource.data.isDraft is bool
-          && request.resource.data.transcription is string;
-
-        allow update: if (isAdmin() || isMappedTo(userId))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["adminCopiedAt", "adminCopiedBy"])
-          && request.resource.data.adminCopiedBy == request.auth.uid
-          && request.resource.data.adminCopiedAt is timestamp;
-
-        allow update: if (isAdmin() || isMappedTo(userId))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["transcription", "adminEditedAt", "adminEditedBy"])
-          && request.resource.data.transcription is string
-          && request.resource.data.adminEditedBy == request.auth.uid
-          && request.resource.data.adminEditedAt is timestamp;
       }
-    }
-
-    match /groups/{groupId} {
-      allow read: if isAdmin()
-        || (request.auth != null && request.auth.uid in resource.data.memberUids);
-      allow create, update: if isAdmin()
-        && request.resource.data.name is string
-        && request.resource.data.name.size() <= 80
-        && request.resource.data.memberUids is list
-        && request.resource.data.memberUids.size() >= 1
-        && request.resource.data.memberUids.size() <= 30
-        && request.resource.data.adminEmails is list
-        && request.resource.data.adminEmails.size() >= 1
-        && request.resource.data.adminEmails.size() <= 30
-        && request.resource.data.mappingUpdatedBy == request.auth.uid;
-      allow delete: if isAdmin();
-    }
-
-    match /{path=**}/notes/{noteId} {
-      allow read: if isAdmin();
     }
 
     match /{document=**} {

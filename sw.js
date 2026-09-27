@@ -1,9 +1,8 @@
-const CACHE_NAME = 'trjohn-woyz-v1';
+const CACHE_NAME = 'trjohn-woyz-v2';
 const APP_SHELL = [
   './',
   './index.html',
   './admin.html',
-  './master-admin.html',
   './demo.html',
   './firebase-config.js',
   './manifest.webmanifest',

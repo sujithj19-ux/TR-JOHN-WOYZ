@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WOYZ Admin</title>
+<title>WOYZ Worklist</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -211,9 +211,9 @@
 <body>
 <section class="login-screen" id="loginScreen">
   <form class="login-card" id="loginForm">
-    <div class="login-brand"><span class="login-brand-pill"><span class="login-brand-dot"></span>WOYZ</span><span>Admin</span></div>
+    <div class="login-brand"><span class="login-brand-pill"><span class="login-brand-dot"></span>WOYZ</span><span>Worklist</span></div>
     <h1 class="login-title">Sign in</h1>
-    <p class="login-sub">Admin access is restricted to accounts assigned in Master Admin.</p>
+    <p class="login-sub">Sign in with your account to view and manage your notes.</p>
     <label class="login-label" for="loginEmail">Email address</label>
     <input class="login-input" id="loginEmail" type="email" autocomplete="username" required>
     <label class="login-label" for="loginPassword">Password</label>
@@ -236,8 +236,8 @@
   <main class="main">
     <div class="main-topbar">
       <div>
-        <div class="topbar-title" id="topbarTitle">Admin notes</div>
-        <div class="topbar-meta" id="topbarMeta">Select a user</div>
+        <div class="topbar-title" id="topbarTitle">My notes</div>
+        <div class="topbar-meta" id="topbarMeta">My worklist</div>
       </div>
       <div class="spacer"></div>
       <div class="user-email" id="userEmail"></div>
@@ -270,19 +270,17 @@
     </div>
     <div class="main-scroll" id="mainScroll"></div>
   </main>
-  <nav class="user-rail" id="userRail" aria-label="Users">
-    <div class="rail-label">Users</div>
+  <nav class="user-rail" id="userRail" aria-label="My account">
+    <div class="rail-label">My account</div>
   </nav>
 </div>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import { browserLocalPersistence, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-import { getFirestore, collection, collectionGroup, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+import { getFirestore, collection, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 
-const MASTER_ADMIN_UID = 'ADMIN_NOT_CONFIGURED';
-const MASTER_ADMIN_EMAIL = '';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -325,8 +323,6 @@ const adminSettingsMenu = document.getElementById('adminSettingsMenu');
 const signoutBtn = document.getElementById('signoutBtn');
 const notesLabel = document.getElementById('notesLabel');
 
-let notesUnsubscribe = null;
-let profilesUnsubscribe = null;
 let profileUnsubscribes = [];
 let noteUnsubscribes = [];
 let allNotes = [];
@@ -1062,10 +1058,10 @@ function renderSelectedNote(){
   const notes = visibleNotes().filter(note => note.userId === selectedUserId);
   const dateNote = notes.find(item => item.id === selectedNoteId);
   const note = dateNote || selectedAdminNote();
-  topbarTitle.textContent = selectedUser ? selectedUser.label : 'Admin notes';
-  topbarMeta.textContent = selectedUser ? `${selectedVisitType} · ${notes.length} note${notes.length === 1 ? '' : 's'}` : `Select a user · ${selectedVisitType}`;
+  topbarTitle.textContent = selectedUser ? selectedUser.label : 'My notes';
+  topbarMeta.textContent = selectedUser ? `${selectedVisitType} · ${notes.length} note${notes.length === 1 ? '' : 's'}` : `My worklist · ${selectedVisitType}`;
   if (!selectedUser){
-    showEmpty('No users yet', 'Notes will appear here after users save them.');
+    showEmpty('No notes yet', 'Your saved notes will appear here.');
     return;
   }
   if (!notes.length){
@@ -1165,42 +1161,12 @@ function clearScopedSubscriptions(){
   userProfiles = {};
 }
 
-function subscribeToAllNotes(){
-  if (notesUnsubscribe) notesUnsubscribe();
-  notesUnsubscribe = onSnapshot(collectionGroup(db,'notes'), snapshot => {
-    allNotes = snapshot.docs.map(doc => {
-      const userId = doc.ref.parent.parent?.id || 'unknown';
-      return {
-        id:doc.id,
-        path:doc.ref.path,
-        userId,
-        userLabel:'',
-        data:doc.data()
-      };
-    });
-    render();
-  }, error => {
-    console.error(error);
-    showEmpty('Unable to load notes', error.message || 'Check admin permissions and Firestore rules.');
-  });
-}
-
-function subscribeToUserProfiles(){
-  if (profilesUnsubscribe) profilesUnsubscribe();
-  profilesUnsubscribe = onSnapshot(collection(db,'users'), snapshot => {
-    userProfiles = Object.fromEntries(snapshot.docs.map(doc => [doc.id, doc.data()]));
-    render();
-  }, error => {
-    console.error(error);
-  });
-}
-
 function subscribeToScopedNotes(ownerIds){
   clearScopedSubscriptions();
   scopedOwnerIds = Array.from(new Set(ownerIds.filter(uid => typeof uid === 'string' && uid.trim())));
   if (!scopedOwnerIds.length){
     render();
-    showEmpty('No group assigned', 'This admin login has not been assigned to a group in Master Admin.');
+    showEmpty('Sign in required', 'Sign in to view your notes.');
     return;
   }
   const notesByOwner = new Map();
@@ -1246,13 +1212,7 @@ loginForm.addEventListener('submit', async event => {
 });
 
 onAuthStateChanged(auth, user => {
-  if (notesUnsubscribe) notesUnsubscribe();
-  if (profilesUnsubscribe) profilesUnsubscribe();
   clearScopedSubscriptions();
-  notesUnsubscribe = null;
-  profilesUnsubscribe = null;
-  allNotes = [];
-  userProfiles = {};
   selectedUserId = null;
   selectedNoteId = null;
   currentAdminUid = user?.uid || null;
@@ -1262,48 +1222,15 @@ onAuthStateChanged(auth, user => {
     userEmail.textContent = '';
     return;
   }
-  if (user.uid === MASTER_ADMIN_UID || String(user.email || '').toLowerCase() === MASTER_ADMIN_EMAIL){
-    setDoc(doc(db,'users',user.uid),{
-      email:user.email || '',
-      emailUpdatedAt:serverTimestamp()
-    },{merge:true}).catch(error => console.warn('Unable to update admin email:', error));
-    loginScreen.classList.add('hidden');
-    appShell.classList.add('authenticated');
-    userEmail.textContent = user.email || '';
-    updateDateNavigation();
-    subscribeToUserProfiles();
-    subscribeToAllNotes();
-    return;
-  }
-  const profileRef = doc(db,'users',user.uid);
-  setDoc(profileRef,{
+  setDoc(doc(db,'users',user.uid),{
     email:user.email || '',
     emailUpdatedAt:serverTimestamp()
-  },{merge:true}).catch(error => {
-    console.warn('Unable to update admin email:', error);
-  }).then(() => getDoc(profileRef)).then(snapshot => {
-    const profile = snapshot.data() || {};
-    const ownerIds = Array.from(new Set([...(profile.sharedWith || []), ...(profile.adminSharedWith || [])]));
-    const adminGroupIds = Array.isArray(profile.adminGroupIds) ? profile.adminGroupIds : [];
-    if (!ownerIds.length && !adminGroupIds.length){
-      appShell.classList.remove('authenticated');
-      loginScreen.classList.remove('hidden');
-      userEmail.textContent = '';
-      loginError.innerHTML = `<div class="blocked">This account is not assigned to any admin group. Please add it in Master Admin.</div>`;
-      return;
-    }
-    loginScreen.classList.add('hidden');
-    appShell.classList.add('authenticated');
-    userEmail.textContent = user.email || '';
-    updateDateNavigation();
-    subscribeToScopedNotes(ownerIds);
-  }).catch(error => {
-    console.error(error);
-    appShell.classList.remove('authenticated');
-    loginScreen.classList.remove('hidden');
-    userEmail.textContent = '';
-    loginError.innerHTML = `<div class="blocked">Unable to check admin access. Please try again.</div>`;
-  });
+  },{merge:true}).catch(error => console.warn('Unable to update account email:', error));
+  loginScreen.classList.add('hidden');
+  appShell.classList.add('authenticated');
+  userEmail.textContent = user.email || '';
+  updateDateNavigation();
+  subscribeToScopedNotes([user.uid]);
 });
 
 adminPreviousDateBtn.addEventListener('click', () => moveAdminDate(-1));

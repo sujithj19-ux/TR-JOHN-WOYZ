@@ -2763,8 +2763,6 @@ let emailBackendReady = null;
 let notesUnsubscribes = [];
 let allNotesUnsubscribes = [];
 let userProfileUnsubscribe = null;
-let groupsUnsubscribe = null;
-let sharedOwnerIds = [];
 let ownerProfiles = {};
 let prescriptionLayoutState = DEFAULT_PRESCRIPTION_LAYOUT;
 let recordSearchTerm = '';
@@ -3998,12 +3996,12 @@ function captureActiveEditorState(){
 
 function canDeleteRecord(record){
   const ownerUid = noteOwnerUid(record);
-  return Boolean(record?.firestoreId && currentUser && sharedOwnerIds.includes(ownerUid));
+  return Boolean(record?.firestoreId && currentUser && ownerUid === currentUser.uid);
 }
 
 function canToggleDischargeRecord(record){
   const ownerUid = noteOwnerUid(record);
-  return Boolean(record?.firestoreId && currentUser && sharedOwnerIds.includes(ownerUid) && noteVisitType(record) === 'IP');
+  return Boolean(record?.firestoreId && currentUser && ownerUid === currentUser.uid && noteVisitType(record) === 'IP');
 }
 
 function updateDischargeButton(record){
@@ -4095,7 +4093,7 @@ function noteMatchesSelectedScope(note, selectedDate = dateInputValue(selectedVi
 }
 
 async function latestVisitDateForSelectedType(){
-  const owners = sharedOwnerIds.length ? sharedOwnerIds : [currentUser.uid];
+  const owners = [currentUser.uid];
   const snapshots = await Promise.all(owners.map(ownerUid => getDocs(collection(db,'users',ownerUid,'notes')).catch(() => null)));
   return snapshots
     .flatMap((snapshot, index) => snapshot ? snapshot.docs.map(docSnap => noteFromSnapshot(docSnap, owners[index])) : [])
@@ -4190,7 +4188,7 @@ function subscribeToSelectedDate({allowLatestDateFallback = false} = {}){
   clearNotesSubscriptions();
   const requestId = ++dateSubscriptionRequestId;
   const selectedDate = dateInputValue(selectedVisitDate);
-  const owners = sharedOwnerIds.length ? sharedOwnerIds : [currentUser.uid];
+  const owners = [currentUser.uid];
   const ownerRecords = new Map();
   let receivedOwners = 0;
   const applyRecords = async () => {
@@ -4285,7 +4283,7 @@ function clearAllNotesSubscriptions(){
 function subscribeToAllRecords(){
   if (!currentUser) return;
   clearAllNotesSubscriptions();
-  const owners = sharedOwnerIds.length ? sharedOwnerIds : [currentUser.uid];
+  const owners = [currentUser.uid];
   owners.forEach(ownerUid => {
     const unsubscribe = onSnapshot(collection(db,'users',ownerUid,'notes'), snapshot => {
       allOwnerRecords.set(ownerUid, snapshot.docs.map(docSnap => applyLocalDirtyRecord(noteFromSnapshot(docSnap, ownerUid))));
@@ -4308,47 +4306,6 @@ function subscribeToAllRecords(){
       else if (selectedVisitType === 'IP') renderEntries();
     });
     allNotesUnsubscribes.push(unsubscribe);
-  });
-}
-
-function ownerIdsChanged(nextIds){
-  const current = [...sharedOwnerIds].sort().join('|');
-  const next = [...nextIds].sort().join('|');
-  return current !== next;
-}
-
-async function applySharedOwners(ownerIds){
-  const nextOwnerIds = Array.from(new Set(ownerIds.filter(uid => typeof uid === 'string' && uid.trim())));
-  if (!currentUser || !nextOwnerIds.includes(currentUser.uid)) nextOwnerIds.unshift(currentUser.uid);
-  const shouldReload = ownerIdsChanged(nextOwnerIds) || !notesUnsubscribes.length;
-  if (!shouldReload) return;
-  sharedOwnerIds = nextOwnerIds;
-  const profileEntries = await Promise.all(sharedOwnerIds.map(async uid => {
-    try{
-      const profile = await getDoc(doc(db,'users',uid));
-      return [uid, profile.data() || {}];
-    }catch(error){
-      return [uid, ownerProfiles[uid] || {}];
-    }
-  }));
-  ownerProfiles = {...ownerProfiles, ...Object.fromEntries(profileEntries)};
-  subscribeToSelectedDate({allowLatestDateFallback:true});
-  subscribeToAllRecords();
-}
-
-function subscribeToGroups(){
-  if (groupsUnsubscribe) groupsUnsubscribe();
-  groupsUnsubscribe = onSnapshot(query(collection(db,'groups'),where('memberUids','array-contains',currentUser.uid)), async snapshot => {
-    const ownerIds = new Set([currentUser.uid]);
-    snapshot.docs.forEach(groupDoc => {
-      (groupDoc.data().memberUids || []).forEach(uid => {
-        if (typeof uid === 'string') ownerIds.add(uid);
-      });
-    });
-    applySharedOwners(Array.from(ownerIds));
-  }, error => {
-    console.error('Unable to load mappings:',error);
-    applySharedOwners([currentUser.uid]);
   });
 }
 
@@ -4540,9 +4497,6 @@ onAuthStateChanged(auth,user => {
       ownerProfiles[user.uid] = profile;
       prescriptionLayoutState = normalizedPrescriptionLayout(profile.prescriptionLayout);
       if (layoutModal.classList.contains('open')) loadLayoutModal();
-      if (Array.isArray(profile.sharedWith)){
-        applySharedOwners([user.uid, ...profile.sharedWith]);
-      }
     }, error => {
       userEmail.textContent = '';
     });
@@ -4551,9 +4505,8 @@ onAuthStateChanged(auth,user => {
     mobileHomeDefaultPending = window.matchMedia('(max-width:600px)').matches;
     mobileHomeDefaultActive = mobileHomeDefaultPending;
     if (mobileHomeDefaultActive) showMobileHomeScreen();
-    sharedOwnerIds = [user.uid];
-    ownerProfiles = {};
-    subscribeToGroups();
+    subscribeToSelectedDate({allowLatestDateFallback:true});
+    subscribeToAllRecords();
   }else{
     clearRecordSearch();
     mobileHomeDefaultPending = false;
@@ -4561,11 +4514,8 @@ onAuthStateChanged(auth,user => {
     clearNotesSubscriptions();
     clearAllNotesSubscriptions();
     if (userProfileUnsubscribe) userProfileUnsubscribe();
-    if (groupsUnsubscribe) groupsUnsubscribe();
     userProfileUnsubscribe = null;
-    groupsUnsubscribe = null;
     prescriptionLayoutState = DEFAULT_PRESCRIPTION_LAYOUT;
-    sharedOwnerIds = [];
     ownerProfiles = {};
     searchScope = 'today';
     selectedTimelineKey = null;
@@ -7815,8 +7765,8 @@ dischargeBtn.addEventListener('click', async () => {
     record.dischargedBy = previousDischargedBy;
     updateDischargeButton(record);
     window.alert(wasDischarged
-      ? 'Unable to revert this discharge. Please check that this doctor is mapped to the note owner.'
-      : 'Unable to discharge this IP patient. Please check that this doctor is mapped to the note owner.');
+      ? 'Unable to revert this discharge. Please check your connection and sign in with the account that owns this note.'
+      : 'Unable to discharge this IP patient. Please check your connection and sign in with the account that owns this note.');
   }
 });
 
@@ -8178,7 +8128,7 @@ trashList.addEventListener('click', async event => {
     else await permanentlyDeleteTrashRecord(record);
   }catch(error){
     console.error('Trash action failed:', error);
-    window.alert('Unable to update Trash. Please check that this doctor is mapped to the note owner.');
+    window.alert('Unable to update Trash. Please check your connection and sign in with the account that owns this note.');
     button.disabled = false;
   }
 });
@@ -8311,7 +8261,7 @@ deleteBtn.addEventListener('click', async () => {
     else showEmptyDate(selectedVisitType === 'IP' ? 'No active IP notes for this date.' : `No ${selectedVisitType} notes saved for this date.`);
   }catch(error){
     console.error('Delete failed:', error);
-    window.alert('Unable to move this note to Trash. Please check that this doctor is mapped to the note owner.');
+    window.alert('Unable to move this note to Trash. Please check your connection and sign in with the account that owns this note.');
   }
 });
 </script>

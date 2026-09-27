@@ -2371,7 +2371,7 @@
     </div>
     <p class="auth-help">Set the name that should appear for this user in the admin page.</p>
     <label class="auth-label" for="credentialNameInput">Name</label>
-    <input class="auth-input" id="credentialNameInput" type="text" autocomplete="name" placeholder="Example: Dr Gigy">
+    <input class="auth-input" id="credentialNameInput" type="text" autocomplete="name" placeholder="Enter your credential name">
     <div class="auth-actions">
       <button class="btn" id="credentialCancelBtn">Close</button>
       <button class="btn btn-copy" id="credentialSaveBtn">Save name</button>
@@ -8340,7 +8340,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=7', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=8', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

@@ -652,7 +652,7 @@
     overflow:hidden;
     text-overflow:ellipsis;
   }
-  .entry-uhid{
+  .entry-mobile{
     font-family:'IBM Plex Mono',monospace;
     font-size:11px;
     color:var(--muted);
@@ -672,7 +672,7 @@
     color:#fff;
   }
   .entry.active .entry-name{ color:var(--teal-deep); }
-  .entry.active .entry-uhid{ color:var(--teal); }
+  .entry.active .entry-mobile{ color:var(--teal); }
 
   /* ---------- MAIN ---------- */
   .main{
@@ -711,7 +711,7 @@
   }
   .topbar-patient.visible{ opacity:1; transform:translateY(0); }
   .topbar-patient-name{ font-weight:600; font-size:15px; }
-  .topbar-patient-uhid{
+  .topbar-patient-mobile{
     font-family:'IBM Plex Mono',monospace;
     font-size:11.5px;
     color:var(--muted);
@@ -1500,7 +1500,7 @@
       font-size:13px;
     }
     .entry-name{ font-size:13.5px; }
-    .entry-uhid{ font-size:10.5px; }
+    .entry-mobile{ font-size:10.5px; }
     .main-topbar{
       height:64px;
       min-height:64px;
@@ -2146,8 +2146,8 @@
   .patient-age-sex-inputs input[data-patient-field="age"]{flex:0 0 40%;width:40%;}
   .patient-age-sex-inputs input[data-patient-field="sex"]{flex:1;width:0;}
   .patient-age-sex-inputs>span{color:var(--muted);}
-  .patient-fields .patient-uhid{grid-column:1 / -1;display:flex;align-items:center;gap:9px;}
-  .patient-fields .patient-uhid input{margin-top:0;flex:1;}
+  .patient-fields .patient-mobile{grid-column:1 / -1;display:flex;align-items:center;gap:9px;}
+  .patient-fields .patient-mobile input{margin-top:0;flex:1;}
 
   .output-section-heading{display:inline-flex;align-items:center;justify-content:space-between;width:100%;gap:12px;}
   .output-section-check{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;}
@@ -2161,7 +2161,15 @@
   .transcription-progress>span{display:block;height:100%;width:4%;background:#FF514A;animation:transcriptionFill 100s cubic-bezier(.1,.5,.2,1) forwards;}
   @keyframes transcriptionFill{from{width:4%;}to{width:94%;}}
   .continuation-dock.transcribing .continuation-actions{display:none;}
-  @media(max-width:600px){body.recording-panel-open .app{pointer-events:none;} .continuation-dock{width:min(94vw,360px);}}
+  @media(max-width:600px){body.recording-panel-open .main-scroll{overflow-y:auto;touch-action:pan-y;} .continuation-dock{width:min(94vw,360px);}}
+  .email-preview-modal{width:min(950px,96vw);max-height:94dvh;overflow-y:auto;}
+  #emailPreviewDetails{white-space:pre-wrap;font-size:13px;margin:12px 0;}
+  #emailPreviewFrame{display:block;width:100%;height:65dvh;border:1px solid var(--border);background:#fff;}
+  #emailPreviewModal{z-index:250;}
+  @media(max-width:600px){.main-scroll{touch-action:pan-y;}.generated-note{flex-shrink:0;}}
+  .allergy-warning{color:#b42318!important;font-weight:700;}
+  .allergy-summary{color:#b42318;background:#fff1f0;border:1px solid #ffc9c5;border-radius:8px;padding:10px 12px;margin:0 0 18px;font-weight:700;}
+  .allergy-summary[hidden]{display:none;}
 </style>
 </head>
 <body>
@@ -2209,11 +2217,10 @@
     <div class="mobile-doc-actions" aria-label="Mobile document type">
       <button class="mobile-doc-action" data-mobile-voice-mode="Medical certificate">Certificate</button>
       <button class="mobile-doc-action" data-mobile-voice-mode="Reply letter">Reply Letter</button>
-      <button class="mobile-doc-action" data-mmse-open>MMSE</button>
     </div>
     <div class="search-row">
       <div class="record-search empty" data-placeholder="SEARCH">
-        <div class="record-search-input" id="recordSearchInput" contenteditable="true" role="searchbox" aria-label="Search records by name or UHID"></div>
+        <div class="record-search-input" id="recordSearchInput" contenteditable="true" role="searchbox" aria-label="Search records by name or Mobile Number"></div>
       </div>
       <div class="search-scope-toggle" id="searchScopeToggle" aria-label="Search scope">
         <button class="search-scope-btn active" data-search-scope="today" type="button">Today</button>
@@ -2230,7 +2237,7 @@
     <div class="main-topbar" id="topbar">
       <div class="topbar-patient" id="topbarPatient" role="button" tabindex="0" aria-label="Open previous notes">
         <span class="topbar-patient-name" id="topbarName"></span>
-        <span class="topbar-patient-uhid" id="topbarUhid"></span>
+        <span class="topbar-patient-mobile" id="topbarMobile"></span>
         <span class="topbar-patient-age" id="topbarAge"></span>
       </div>
       <div class="user-email" id="userEmail"></div>
@@ -2247,7 +2254,6 @@
           <div class="template-menu" id="templateMenu">
             <button class="template-item" type="button" data-topbar-voice-mode="Medical certificate">Certificate</button>
             <button class="template-item" type="button" data-topbar-voice-mode="Reply letter">Reply Letter</button>
-            <button class="template-item" type="button" data-mmse-open>MMSE</button>
           </div>
         </div>
       </div>
@@ -2319,12 +2325,6 @@
           <button class="home-tool-btn primary" type="button" data-home-voice-mode="Visit Note">Visit Note</button>
           <button class="home-tool-btn" type="button" data-home-voice-mode="Medical certificate">Certificate</button>
           <button class="home-tool-btn" type="button" data-home-voice-mode="Reply letter">Reply Letter</button>
-          <div class="home-tools-wrap">
-            <button class="home-tool-btn" type="button" data-home-tools-toggle>Tools</button>
-            <div class="home-tools-panel">
-              <button class="home-tool-btn" type="button" data-home-mmse-open>MMSE</button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -2401,7 +2401,7 @@
       <h2 class="auth-modal-title" id="emailModalTitle">Email note</h2>
       <button class="modal-close" id="emailCloseBtn" aria-label="Close email dialog">&times;</button>
     </div>
-    <p class="auth-help">Send the generated note as a formatted PDF attachment. The same note text is included in the email body.</p>
+    <p class="auth-help">Send the generated note as a formatted PDF attachment. Only patient details are included in the email body.</p>
     <label class="auth-label" for="emailRecipientInput">Receiver email address</label>
     <input class="auth-input" id="emailRecipientInput" type="email" autocomplete="email" inputmode="email" placeholder="receiver@example.com">
     <label class="remember-email-row" for="rememberEmailCheckbox">
@@ -2411,9 +2411,18 @@
     <div class="remembered-email-list" id="rememberedEmailList" hidden></div>
     <div class="email-status" id="emailDialogStatus"></div>
     <div class="auth-actions">
+      <button class="btn" id="emailPreviewBtn" type="button">Preview</button>
       <button class="btn" id="emailCancelBtn" type="button">Cancel</button>
       <button class="btn btn-copy" id="emailSendBtn" type="button">Send</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="emailPreviewModal" role="dialog" aria-modal="true" aria-labelledby="emailPreviewTitle">
+  <div class="auth-modal email-preview-modal">
+    <div class="auth-modal-head"><h2 id="emailPreviewTitle">Email preview</h2><button class="btn" id="emailPreviewCloseBtn" type="button">Close</button></div>
+    <div id="emailPreviewDetails"></div>
+    <iframe id="emailPreviewFrame" title="Prescription attachment preview" sandbox=""></iframe>
   </div>
 </div>
 
@@ -2538,7 +2547,7 @@ const db = getFirestore(firebaseApp);
 const sampleRecords = [
   {
     name: "Soji George",
-    uhid: "260242",
+    mobile: "260242",
     age: 58,
     heading: "Visit Note",
     hpi: "Patient reports feeling better. Previously, patient had difficulty sleeping and eating due to pain. Patient describes the pain as being on one side, with pillow placement helping. Gabantin dose was previously increased to 400 mg twice daily.",
@@ -2551,7 +2560,7 @@ const sampleRecords = [
   },
   {
     name: "Anitha Menon",
-    uhid: "241108",
+    mobile: "241108",
     age: 47,
     heading: "Follow-up Note",
     hpi: "Patient reports mild residual numbness in the left hand, improving gradually. No new episodes of weakness. Sleep and appetite are back to normal. Physiotherapy sessions ongoing twice weekly.",
@@ -2563,7 +2572,7 @@ const sampleRecords = [
   },
   {
     name: "Ravi Kumar Nair",
-    uhid: "252991",
+    mobile: "252991",
     age: 34,
     heading: "Visit Note",
     hpi: "New patient presenting with intermittent headaches over 3 weeks, described as pressure-like, bilateral, worse by evening. No visual disturbance or vomiting. No prior history of migraine.",
@@ -2574,7 +2583,7 @@ const sampleRecords = [
   },
   {
     name: "Little Flower Thomas",
-    uhid: "238870",
+    mobile: "238870",
     age: 71,
     heading: "Review Note",
     hpi: "Patient stable on current regimen. No fresh complaints. Gait has improved since last review. Family reports better sleep continuity over the past two weeks.",
@@ -2597,7 +2606,7 @@ const searchScopeToggle = document.getElementById('searchScopeToggle');
 const mainScroll = document.getElementById('mainScroll');
 const topbarPatient = document.getElementById('topbarPatient');
 const topbarName = document.getElementById('topbarName');
-const topbarUhid = document.getElementById('topbarUhid');
+const topbarMobile = document.getElementById('topbarMobile');
 const topbarAge = document.getElementById('topbarAge');
 const copyBtn = document.getElementById('copyBtn');
 const printBtn = document.getElementById('printBtn');
@@ -2734,10 +2743,10 @@ const GEMINI_MODELS = ['gemini-3.6-flash','gemini-flash-latest','gemini-2.5-flas
 const PATIENT_FIELDS = {
   patientName:{type:'string',description:'Patient name exactly as spoken at the beginning, otherwise NIL.'},
   patientAge:{type:'string',description:'Patient age exactly as spoken at the beginning, otherwise NIL.'},
-  patientUhid:{type:'string',description:'UHID exactly as spoken at the beginning, otherwise NIL.'}
+  patientMobile:{type:'string',description:'Mobile Number exactly as spoken at the beginning, otherwise NIL.'}
 };
-const TEXT_SCHEMA = {type:'object',properties:{...PATIENT_FIELDS,text:{type:'string',description:'The complete requested editable clinical text. Preserve every clearly dictated clinical fact, medicine, dose, investigation, value, advice, and follow-up without summarizing or truncating.'}},required:['patientName','patientAge','patientUhid','text']};
-const CERTIFICATE_SCHEMA = {type:'object',properties:{...PATIENT_FIELDS,date:{type:'string'},patientSex:{type:'string'},certificateBody:{type:'string'}},required:['patientName','patientAge','patientUhid','date','patientSex','certificateBody']};
+const TEXT_SCHEMA = {type:'object',properties:{...PATIENT_FIELDS,text:{type:'string',description:'The complete requested editable clinical text. Preserve every clearly dictated clinical fact, medicine, dose, investigation, value, advice, and follow-up without summarizing or truncating.'}},required:['patientName','patientAge','patientMobile','text']};
+const CERTIFICATE_SCHEMA = {type:'object',properties:{...PATIENT_FIELDS,date:{type:'string'},patientSex:{type:'string'},certificateBody:{type:'string'}},required:['patientName','patientAge','patientMobile','date','patientSex','certificateBody']};
 const AMBIENT_FIELDS = ['presentingComplaint','historyOfPresentIllness','pastMedicalHistory','allergies','familyHistory','personalHistory','examinationFindings','reviewOfInvestigations','currentMedication','provisionalDiagnosis','treatmentPlan'];
 const OP_AMBIENT_FIELDS = [...AMBIENT_FIELDS,'prescription'];
 const REMEMBERED_EMAILS_STORAGE_KEY = 'woyz_notes_remembered_emails';
@@ -2746,13 +2755,13 @@ const EMAIL_FUNCTION_URL = '';
 const EMAIL_BACKEND_CONFIG = firebaseConfig;
 const ambientSchemaForVisitType = visitType => {
   const fields = visitType === 'OP' ? OP_AMBIENT_FIELDS : AMBIENT_FIELDS;
-  return {type:'object',properties:{...PATIENT_FIELDS,patientSex:{type:'string'},...Object.fromEntries(fields.map(field=>[field,{type:'string'}]))},required:['patientName','patientAge','patientUhid','patientSex',...fields]};
+  return {type:'object',properties:{...PATIENT_FIELDS,patientSex:{type:'string'},...Object.fromEntries(fields.map(field=>[field,{type:'string'}]))},required:['patientName','patientAge','patientMobile','patientSex',...fields]};
 };
 const GEMINI_PROMPTS = {
-  ambient:`You are a clinical note assistant helping a doctor create a concise medical visit note from ambient consultation audio. The recording may be a natural doctor-patient-attendant conversation, a formal dictation, or a mixture of both. Listen to and process the entire recording, not only sentences that sound like dictated note text. The doctor states the patient name, age, and UHID at the beginning; extract those identifiers exactly and treat the remaining recording as the consultation. Convert clearly spoken clinically relevant conversation into the correct note sections, including symptoms, duration, progression, negatives, past history, examination, medicines, investigation results, diagnosis, and advice when they are actually present in the audio. Correct spelling and grammar while keeping the original meaning. Do not add, infer, assume, recommend, or hallucinate clinical information. Do not remove, ignore, or over-compress clinically relevant details that are clearly present. If something is unclear, omit it. Return an empty string when a whole clinical field is unsupported. Do not output NIL placeholders. Preserve explicitly stated negative findings such as no allergies or negative test results. Translate Malayalam clinical content into professional clinical English and transliterate names into English. Preserve chronology, medicines, doses, investigations, findings, diagnoses, and advice exactly as spoken. Review of investigations is a fidelity-critical section: preserve every dictated or conversationally stated investigation name, modality, side, level, date/time reference, numeric value, unit, impression, and normal/abnormal qualifier exactly; never add, remove, summarize, shorten, combine, normalize, reinterpret, or make investigations more concise. Format Review of investigations as a numbered list whenever investigations are present, with each numbered investigation/report starting on a new line. If an investigation has multiple findings or sentences, put each finding on its own line below that numbered investigation without numbering the findings. If blood investigations are dictated or discussed, group all blood tests from the same date under one numbered item such as "Blood investigations on 12th January 2026:"; below that item, list each blood value on its own unnumbered line. Never number individual blood values. If blood reports are present from multiple dates, create one numbered "Blood investigations on [date]:" item for each date. Add standard conventional units for common blood values even when units are not dictated, while preserving dictated values exactly. Format Current medications as a numbered list, with each numbered medicine starting on a new line, preserving drug name, dose, route, frequency, and duration exactly as stated. Current medicines belong in currentMedication. Newly advised or changed medicines, investigations, referrals, and follow-up belong in treatmentPlan. In Treatment Plan, number only separate complete treatment actions. Keep each medicine with its full dose, route, timing, frequency, and duration on one numbered line; never split words such as oral, night, morning, bedtime, for 20 days, once daily, twice daily, SOS, or after food into separate numbered items. For OP visit notes only, generate a Prescription section only when the doctor explicitly dictates a prescription section or clearly says that the following medicines are prescription/Rx medicines. Medicines mentioned only under Current Medications, Treatment Plan, advice, or general treatment changes must stay in those sections and must not be duplicated into Prescription. If the doctor does not explicitly indicate prescription/Rx, return prescription as NIL. Inside prescription, use exactly this compact format for each medicine: numbered medicine line containing only Tablet/Cap/Syrup/Inj brand name dose, then one clear English patient instruction with timing, duration, and food or administration instruction without repeating the medicine name, then one natural Malayalam patient instruction for the same medicine without repeating the medicine name. Always include the Malayalam instruction line for every prescription medicine, written in simple patient-friendly Kerala Malayalam with natural wording, not literal machine translation. Do not write the word Malayalam before the Malayalam text. Do not translate medicine brand names into Malayalam. Keep medicine names and doses in English in the numbered medicine line only. Always write tablet medicines as Tablet, not Tab. Do not use internal labels like morning, noon, night, bedtime, Duration, or Instructions in prescription lines. Do not include patient demographics inside prescription. For IP visit notes, do not generate prescription and return NIL if a prescription field is requested. Return only the requested JSON object without markdown.`,
-  'Review dictation':`You are an expert medical transcription assistant. The doctor states the patient name, age, and UHID at the beginning; extract these identifiers into their JSON fields and do not repeat that opening identification in the text unless clinically necessary. Convert the remaining Malayalam, English, or Kerala Manglish dictation into complete professional clinical English suitable for a review note. Preserve every clearly dictated clinical fact, chronology, medicine, dose, route, frequency, duration, investigation, numeric value, unit, examination finding, assessment, advice, instruction, referral, and follow-up exactly as dictated. Do not summarize, shorten, condense, compress, omit, merge unrelated facts, or remove repeated clinically relevant details. Translate Malayalam clinical content and transliterate names into English. Correct grammar and punctuation, but never invent, infer, recommend, add, or remove information. If investigations are dictated, use the exact heading "Review of Investigations:" and format each investigation/report as a numbered item, with each report starting on a new line. If an investigation has multiple findings, put each finding on its own unnumbered line below that report. If blood investigations are dictated, group all blood tests from the same date under one numbered item and list each blood value below it on its own unnumbered line, adding standard conventional units when absent. If existing/background medicines are dictated, use the exact heading "Current Medications:" and number only those current medicines. If the doctor explicitly dictates a prescription/Rx section, start a separate exact heading "Prescription:" and number only prescription medicines from 1 again. Never continue numbering from Current Medications into Prescription, Advice, Instructions, or Follow-up. If advice, instructions, consultation notes, or treatment changes are dictated, keep them under the dictated heading or a suitable clinical heading and number them separately from Prescription. Return only the requested JSON object.`,
-  'Reply letter':`You are a clinical reply letter drafting assistant. The doctor states the patient name, age, and UHID at the beginning; extract these identifiers into their JSON fields and exclude the opening identification from the letter unless it belongs naturally in the clinical content. Create a clean reply letter from only the dictated audio. Correct spelling and grammar and make sentences complete. Do not add, infer, assume, hallucinate, recommend, or remove any clinical information. Use a polite professional letter style and keep the original meaning exactly. The text must begin exactly with "To," followed by the dictated recipient name, credentials, department, hospital, or address, each on its own line when dictated. Leave one blank line before the main paragraphs. Do not use a salutation or a Reply Letter heading. End with "Thank you" one blank line below the final paragraph. Do not include sender credentials, signature, or footer. If a detail is not dictated, omit it; do not write placeholders or "Not dictated". Return only the requested JSON object.`,
-  'Medical certificate':`You are an expert medical certificate drafting assistant. The doctor states the patient name, age, and UHID at the beginning; extract them exactly into their JSON fields. Create a clean medical certificate from only the dictated audio. Correct spelling and grammar and make sentences complete. Do not add, infer, assume, hallucinate, recommend, or remove any clinical or administrative information. Use a simple certificate style. Use today's date only when no date is dictated. The certificateBody must begin with "This is to certify that" and contain one or more clear paragraphs. Include patient details only if dictated or provided in the JSON patient fields. If dates, rest period, diagnosis, fitness, restrictions, or purpose are dictated, include them exactly. If a detail is not dictated, omit it; do not write placeholders or "Not dictated". Do not include "To whomsoever it may concern", "Thank you", doctor credentials, or a signature in certificateBody. Return only the requested JSON object.`
+  ambient:`You are a clinical note assistant helping a doctor create a concise medical visit note from ambient consultation audio. The recording may be a natural doctor-patient-attendant conversation, a formal dictation, or a mixture of both. Listen to and process the entire recording, not only sentences that sound like dictated note text. The doctor states the patient name, age, and Mobile Number at the beginning; extract those identifiers exactly and treat the remaining recording as the consultation. Convert clearly spoken clinically relevant conversation into the correct note sections, including symptoms, duration, progression, negatives, past history, examination, medicines, investigation results, diagnosis, and advice when they are actually present in the audio. Correct spelling and grammar while keeping the original meaning. Do not add, infer, assume, recommend, or hallucinate clinical information. Do not remove, ignore, or over-compress clinically relevant details that are clearly present. If something is unclear, omit it. Return an empty string when a whole clinical field is unsupported. Do not output NIL placeholders. Preserve explicitly stated negative findings such as no allergies or negative test results. Translate Malayalam clinical content into professional clinical English and transliterate names into English. Preserve chronology, medicines, doses, investigations, findings, diagnoses, and advice exactly as spoken. Review of investigations is a fidelity-critical section: preserve every dictated or conversationally stated investigation name, modality, side, level, date/time reference, numeric value, unit, impression, and normal/abnormal qualifier exactly; never add, remove, summarize, shorten, combine, normalize, reinterpret, or make investigations more concise. Format Review of investigations as a numbered list whenever investigations are present, with each numbered investigation/report starting on a new line. If an investigation has multiple findings or sentences, put each finding on its own line below that numbered investigation without numbering the findings. If blood investigations are dictated or discussed, group all blood tests from the same date under one numbered item such as "Blood investigations on 12th January 2026:"; below that item, list each blood value on its own unnumbered line. Never number individual blood values. If blood reports are present from multiple dates, create one numbered "Blood investigations on [date]:" item for each date. Add standard conventional units for common blood values even when units are not dictated, while preserving dictated values exactly. Format Current medications as a numbered list, with each numbered medicine starting on a new line, preserving drug name, dose, route, frequency, and duration exactly as stated. Current medicines belong in currentMedication. Newly advised or changed medicines, investigations, referrals, and follow-up belong in treatmentPlan. In Treatment Plan, number only separate complete treatment actions. Keep each medicine with its full dose, route, timing, frequency, and duration on one numbered line; never split words such as oral, night, morning, bedtime, for 20 days, once daily, twice daily, SOS, or after food into separate numbered items. For OP visit notes only, generate a Prescription section only when the doctor explicitly dictates a prescription section or clearly says that the following medicines are prescription/Rx medicines. Medicines mentioned only under Current Medications, Treatment Plan, advice, or general treatment changes must stay in those sections and must not be duplicated into Prescription. If the doctor does not explicitly indicate prescription/Rx, return prescription as NIL. Inside prescription, use exactly this compact format for each medicine: numbered medicine line containing only Tablet/Cap/Syrup/Inj brand name dose, then one clear English patient instruction with timing, duration, and food or administration instruction without repeating the medicine name, then one natural Malayalam patient instruction for the same medicine without repeating the medicine name. Always include the Malayalam instruction line for every prescription medicine, written in simple patient-friendly Kerala Malayalam with natural wording, not literal machine translation. Do not write the word Malayalam before the Malayalam text. Do not translate medicine brand names into Malayalam. Keep medicine names and doses in English in the numbered medicine line only. Always write tablet medicines as Tablet, not Tab. Do not use internal labels like morning, noon, night, bedtime, Duration, or Instructions in prescription lines. Do not include patient demographics inside prescription. For IP visit notes, do not generate prescription and return NIL if a prescription field is requested. Return only the requested JSON object without markdown.`,
+  'Review dictation':`You are an expert medical transcription assistant. The doctor states the patient name, age, and Mobile Number at the beginning; extract these identifiers into their JSON fields and do not repeat that opening identification in the text unless clinically necessary. Convert the remaining Malayalam, English, or Kerala Manglish dictation into complete professional clinical English suitable for a review note. Preserve every clearly dictated clinical fact, chronology, medicine, dose, route, frequency, duration, investigation, numeric value, unit, examination finding, assessment, advice, instruction, referral, and follow-up exactly as dictated. Do not summarize, shorten, condense, compress, omit, merge unrelated facts, or remove repeated clinically relevant details. Translate Malayalam clinical content and transliterate names into English. Correct grammar and punctuation, but never invent, infer, recommend, add, or remove information. If investigations are dictated, use the exact heading "Review of Investigations:" and format each investigation/report as a numbered item, with each report starting on a new line. If an investigation has multiple findings, put each finding on its own unnumbered line below that report. If blood investigations are dictated, group all blood tests from the same date under one numbered item and list each blood value below it on its own unnumbered line, adding standard conventional units when absent. If existing/background medicines are dictated, use the exact heading "Current Medications:" and number only those current medicines. If the doctor explicitly dictates a prescription/Rx section, start a separate exact heading "Prescription:" and number only prescription medicines from 1 again. Never continue numbering from Current Medications into Prescription, Advice, Instructions, or Follow-up. If advice, instructions, consultation notes, or treatment changes are dictated, keep them under the dictated heading or a suitable clinical heading and number them separately from Prescription. Return only the requested JSON object.`,
+  'Reply letter':`You are a clinical reply letter drafting assistant. The doctor states the patient name, age, and Mobile Number at the beginning; extract these identifiers into their JSON fields and exclude the opening identification from the letter unless it belongs naturally in the clinical content. Create a clean reply letter from only the dictated audio. Correct spelling and grammar and make sentences complete. Do not add, infer, assume, hallucinate, recommend, or remove any clinical information. Use a polite professional letter style and keep the original meaning exactly. The text must begin exactly with "To," followed by the dictated recipient name, credentials, department, hospital, or address, each on its own line when dictated. Leave one blank line before the main paragraphs. Do not use a salutation or a Reply Letter heading. End with "Thank you" one blank line below the final paragraph. Do not include sender credentials, signature, or footer. If a detail is not dictated, omit it; do not write placeholders or "Not dictated". Return only the requested JSON object.`,
+  'Medical certificate':`You are an expert medical certificate drafting assistant. The doctor states the patient name, age, and Mobile Number at the beginning; extract them exactly into their JSON fields. Create a clean medical certificate from only the dictated audio. Correct spelling and grammar and make sentences complete. Do not add, infer, assume, hallucinate, recommend, or remove any clinical or administrative information. Use a simple certificate style. Use today's date only when no date is dictated. The certificateBody must begin with "This is to certify that" and contain one or more clear paragraphs. Include patient details only if dictated or provided in the JSON patient fields. If dates, rest period, diagnosis, fitness, restrictions, or purpose are dictated, include them exactly. If a detail is not dictated, omit it; do not write placeholders or "Not dictated". Do not include "To whomsoever it may concern", "Thank you", doctor credentials, or a signature in certificateBody. Return only the requested JSON object.`
 };
 
 const MMSE_SECTIONS = [
@@ -2841,12 +2850,12 @@ let continuationState = {
 
 const MANUAL_NOTE_TEMPLATE = `Patient Name:
 Age:
-UHID:
+Mobile Number:
 Sex: `;
 
 const VOICE_NOTE_TEMPLATE = `Patient Name: NIL
 Age: NIL
-UHID: NIL
+Mobile Number: NIL
 Sex: NIL
 
 Presenting Complaint:
@@ -2889,7 +2898,7 @@ NIL`;
 
 const MEDICAL_CERTIFICATE_TEMPLATE = `Patient Name: NIL
 Age: NIL
-UHID: NIL
+Mobile Number: NIL
 Date: NIL
 Sex: NIL
 
@@ -2898,7 +2907,7 @@ This is to certify that `;
 
 const REPLY_LETTER_TEMPLATE = `Patient Name: NIL
 Age: NIL
-UHID: NIL
+Mobile Number: NIL
 
 To,
 
@@ -3036,7 +3045,7 @@ function renderTodayEntries(){
       <span class="entry-avatar">${escapeHtml(serialNumber)}</span>
       <span class="entry-text">
         <div class="entry-name">${escapeHtml(entryName)}</div>
-        <div class="entry-uhid">${escapeHtml(entryMeta)}</div>
+        <div class="entry-mobile">${escapeHtml(entryMeta)}</div>
       </span>
       <span class="entry-owner">${escapeHtml(ownerCode)}</span>
     `;
@@ -3095,7 +3104,7 @@ function renderOpPatientEntries(){
       <span class="entry-avatar">${escapeHtml(serialNumber)}</span>
       <span class="entry-text">
         <div class="entry-name">${escapeHtml(entryName)}</div>
-        <div class="entry-uhid">${escapeHtml(compactPatientMetaText(namedDraft ? patientMetaLine(r) : r.createdAt))}</div>
+        <div class="entry-mobile">${escapeHtml(compactPatientMetaText(namedDraft ? patientMetaLine(r) : r.createdAt))}</div>
       </span>
       <span class="entry-owner">${escapeHtml(ownerCode)}</span>
     `;
@@ -3119,7 +3128,7 @@ function renderOpPatientEntries(){
       <span class="entry-avatar">${escapeHtml(serialNumber)}</span>
       <span class="entry-text">
         <div class="entry-name">${escapeHtml(displayPatientName(latest))}</div>
-        <div class="entry-uhid">${escapeHtml(`${patientMetaLine(latest)} · ${group.todayRecords.length} today · ${group.records.length} total`)}</div>
+        <div class="entry-mobile">${escapeHtml(`${patientMetaLine(latest)} · ${group.todayRecords.length} today · ${group.records.length} total`)}</div>
       </span>
       <span class="entry-owner">${escapeHtml(ownerCode)}</span>
     `;
@@ -3137,8 +3146,11 @@ renderEntries();
 
 function patientSearchKey(record){
   const identity = patientIdentity(record);
-  const uhid = normalizePatientToken(identity.uhid);
-  if (uhid && uhid !== 'nil') return `uhid:${uhid}`;
+  if (record?.sourcePatientKey) return record.sourcePatientKey;
+  const legacy = normalizePatientToken(identity.uhid);
+  if (legacy && legacy !== 'nil') return `uhid:${legacy}`;
+  const mobile = String(identity.mobile || '').replace(/\D/g, '');
+  if (mobile) return `mobile:${mobile}|name:${normalizePatientToken(identity.name)}|sex:${normalizePatientToken(identity.sex)}`;
   const name = normalizePatientToken(identity.name || record?.name);
   const sex = normalizePatientToken(identity.sex);
   const age = normalizePatientToken(identity.age);
@@ -3428,7 +3440,7 @@ function renderAllPatientEntries(){
   entryList.innerHTML = '';
   const groups = groupedPatientSearchResults();
   if (!groups.length){
-    entryList.innerHTML = `<div class="empty-sub" style="padding:10px 8px;">${recordSearchTerm ? 'No matching patients.' : 'Type a name or UHID to search all patients.'}</div>`;
+    entryList.innerHTML = `<div class="empty-sub" style="padding:10px 8px;">${recordSearchTerm ? 'No matching patients.' : 'Type a name or Mobile Number to search all patients.'}</div>`;
     return;
   }
   groups.forEach((group, index) => {
@@ -3442,7 +3454,7 @@ function renderAllPatientEntries(){
       <span class="entry-avatar">${escapeHtml(serialNumber)}</span>
       <span class="entry-text">
         <div class="entry-name">${escapeHtml(displayPatientName(latest))}</div>
-        <div class="entry-uhid">${escapeHtml(`${patientMetaLine(latest)} · ${group.records.length} note${group.records.length === 1 ? '' : 's'}`)}</div>
+        <div class="entry-mobile">${escapeHtml(`${patientMetaLine(latest)} · ${group.records.length} note${group.records.length === 1 ? '' : 's'}`)}</div>
       </span>
       <span class="entry-owner">${escapeHtml(ownerCode)}</span>
     `;
@@ -3468,8 +3480,8 @@ function recordMatchesSearch(record){
   const haystack = [
     patient.name,
     record?.name,
-    patient.uhid,
-    record?.uhid,
+    patient.mobile,
+    record?.mobile,
     patient.sex,
     record?.sex,
     cleanAge(patient.age || record?.age)
@@ -3514,7 +3526,7 @@ function renderPatientTimeline(key){
   const latest = timelineRecords[0];
   const identity = patientIdentity(latest);
   topbarName.textContent = displayPatientName(latest);
-  topbarUhid.textContent = 'UHID ' + (anonymizeEnabled ? 'hidden' : (identity.uhid || 'NIL'));
+  topbarMobile.textContent = 'Mobile Number ' + (anonymizeEnabled ? 'hidden' : (identity.mobile || 'NIL'));
   topbarAge.textContent = identity.age + ' yrs';
   topbarPatient.classList.add('visible');
   copyBtn.style.display = 'none';
@@ -3562,7 +3574,7 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
     }
     topbarName.textContent = displayPatientName(selectedRecord);
     const selectedIdentity = patientIdentity(selectedRecord);
-    topbarUhid.textContent = 'UHID ' + (anonymizeEnabled ? 'hidden' : (selectedIdentity.uhid || 'NIL'));
+    topbarMobile.textContent = 'Mobile Number ' + (anonymizeEnabled ? 'hidden' : (selectedIdentity.mobile || 'NIL'));
     topbarAge.textContent = selectedIdentity.age + ' yrs';
     topbarPatient.classList.add('visible');
     saveDraftBtn.classList.toggle('visible', !anonymizeEnabled);
@@ -3578,7 +3590,7 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
   const latest = timelineRecords[0];
   const identity = patientIdentity(latest);
   topbarName.textContent = displayPatientName(latest);
-  topbarUhid.textContent = 'UHID ' + (anonymizeEnabled ? 'hidden' : (identity.uhid || 'NIL'));
+  topbarMobile.textContent = 'Mobile Number ' + (anonymizeEnabled ? 'hidden' : (identity.mobile || 'NIL'));
   topbarAge.textContent = identity.age + ' yrs';
   topbarPatient.classList.add('visible');
   copyBtn.style.display = 'none';
@@ -3658,7 +3670,7 @@ function renderIpPatientTimeline(key, date = selectedIpTimelineDate || dateInput
   const latest = sectionsToRender[0]?.record || dateGroups[0].sections[0]?.record;
   const identity = patientIdentity(latest);
   topbarName.textContent = displayPatientName(latest);
-  topbarUhid.textContent = 'UHID ' + (anonymizeEnabled ? 'hidden' : (identity.uhid || 'NIL'));
+  topbarMobile.textContent = 'Mobile Number ' + (anonymizeEnabled ? 'hidden' : (identity.mobile || 'NIL'));
   topbarAge.textContent = identity.age + ' yrs';
   topbarPatient.classList.add('visible');
   copyBtn.style.display = 'none';
@@ -3826,6 +3838,7 @@ async function addTimelinePatientToToday(sourceRecord){
   const patientData = {
     name:identity.name || 'NIL',
     age:identity.age || 'NIL',
+    mobile:identity.mobile || 'NIL',
     uhid:identity.uhid || 'NIL',
     sex:identity.sex || 'NIL'
   };
@@ -3908,6 +3921,7 @@ function patientIdentity(record){
   const patient = record?.patientData || {};
   return {
     name:String(patient.name || record?.name || '').trim(),
+    mobile:String(patient.mobile || record?.mobile || '').trim(),
     uhid:String(patient.uhid || record?.uhid || '').trim(),
     age:cleanAge(patient.age || record?.age || 'NIL'),
     sex:cleanSex(patient.sex || record?.sex || 'NIL')
@@ -3924,6 +3938,7 @@ function patientDataWithFallback(primary = {}, fallback = {}){
   return {
     name:choose('name'),
     age:choose('age', cleanAge),
+    mobile:choose('mobile'),
     uhid:choose('uhid'),
     sex:choose('sex', cleanSex)
   };
@@ -3939,6 +3954,7 @@ function patientDataWithTrustedFallback(extracted = {}, trusted = {}){
   return {
     name:choose('name'),
     age:choose('age', cleanAge),
+    mobile:choose('mobile'),
     uhid:choose('uhid'),
     sex:choose('sex', cleanSex)
   };
@@ -3949,7 +3965,7 @@ function trustedPatientContext(patient = {}){
   const lines = [
     ['Patient Name', trusted.name],
     ['Age', trusted.age],
-    ['UHID', trusted.uhid],
+    ['Mobile Number', trusted.mobile],
     ['Sex', trusted.sex]
   ].filter(([, value]) => value && !isNilLike(value));
   if (!lines.length) return '';
@@ -3958,7 +3974,7 @@ function trustedPatientContext(patient = {}){
 
 function selectedPatientDataForNewDraft(){
   const record = activeIndex !== null ? records[activeIndex] : (selectedOpTimelineRecord() || latestOpTimelineRecord());
-  if (!record || record.voiceDraft) return {name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'};
+  if (!record || record.voiceDraft) return {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'};
   return patientDataWithFallback(patientIdentity(record));
 }
 
@@ -3967,7 +3983,7 @@ function templateWithPatientData(template, patientData){
   return String(template || '')
     .replace(/^Patient Name:\s*.*$/m, `Patient Name: ${patient.name}`)
     .replace(/^Age:\s*.*$/m, `Age: ${patient.age}`)
-    .replace(/^UHID:\s*.*$/m, `UHID: ${patient.uhid}`)
+    .replace(/^Mobile Number:\s*.*$/m, `Mobile Number: ${patient.mobile}`)
     .replace(/^Sex:\s*.*$/m, `Sex: ${patient.sex}`);
 }
 
@@ -3979,12 +3995,12 @@ function anonymizeTextForRecord(text, record){
   if (identity.name && !/^nil$/i.test(identity.name)){
     output = output.replace(new RegExp(escapeRegExp(identity.name), 'gi'), code);
   }
-  if (identity.uhid && !/^nil$/i.test(identity.uhid)){
-    output = output.replace(new RegExp(escapeRegExp(identity.uhid), 'gi'), 'UHID hidden');
+  if (identity.mobile && !/^nil$/i.test(identity.mobile)){
+    output = output.replace(new RegExp(escapeRegExp(identity.mobile), 'gi'), 'Mobile Number hidden');
   }
   output = output
     .replace(/^Patient Name:\s*([^\n·]*)(.*)$/gim, `Patient Name: ${code}$2`)
-    .replace(/^UHID:\s*([^\n·]*)(.*)$/gim, 'UHID: hidden$2');
+    .replace(/^Mobile Number:\s*([^\n·]*)(.*)$/gim, 'Mobile Number: hidden$2');
   return output;
 }
 
@@ -3996,10 +4012,10 @@ function displayPatientName(record){
 
 function patientMetaLine(record){
   const identity = patientIdentity(record);
-  const uhid = anonymizeEnabled ? 'hidden' : (identity.uhid || 'NIL');
+  const mobile = anonymizeEnabled ? 'hidden' : (identity.mobile || 'NIL');
   const sex = compactSex(identity.sex);
   const age = cleanAge(identity.age);
-  return `UHID ${uhid} · ${sex} · ${age}`;
+  return `Mobile Number ${mobile} · ${sex} · ${age}`;
 }
 
 function userNotesCollection(){
@@ -4039,7 +4055,7 @@ function markRecordDirty(record,{generated = false} = {}){
 }
 
 function patientDataChanged(previous = {}, next = {}){
-  return ['name','age','uhid','sex'].some(field => String(previous?.[field] || '') !== String(next?.[field] || ''));
+  return ['name','age','mobile','sex'].some(field => String(previous?.[field] || '') !== String(next?.[field] || ''));
 }
 
 function refreshActivePatientIdentityFromText(record, text, {immediate = false} = {}){
@@ -4193,13 +4209,13 @@ function noteFromSnapshot(snapshot, ownerUid = currentUser?.uid){
     ownerLabel:ownerDisplayName(ownerUid),
     createdAtValue:data.createdAt,
     name:data.patientData?.name || 'Visit Note draft',
-    uhid:data.patientData?.uhid || 'NIL',
+    mobile:data.patientData?.mobile || 'NIL',
     age:data.patientData?.age || 'NIL',
     sex:data.patientData?.sex || 'NIL',
     createdAt:data.createdAtLabel || '',
     isDraft:data.isDraft === true,
     transcription:data.transcription || '',
-    patientData:data.patientData || {name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'},
+    patientData:data.patientData || {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'},
     voiceDraft:data.voiceDraft === true,
     visitType:data.visitType === 'IP' || data.visitType === 'OP' ? data.visitType : null,
     admissionDate:data.admissionDate || data.visitDate || null,
@@ -4270,7 +4286,7 @@ function setSearchScope(scope){
   renderTimelineMenu();
   updateContinueNoteButton();
   setMobileBottomActionsVisible(false);
-  mainScroll.innerHTML = '<div class="empty-state"><div class="empty-title">Search all patients</div><div class="empty-sub">Type a name or UHID, then select a patient to view previous records.</div></div>';
+  mainScroll.innerHTML = '<div class="empty-state"><div class="empty-title">Search all patients</div><div class="empty-sub">Type a name or Mobile Number, then select a patient to view previous records.</div></div>';
 }
 
 function closeMobileSidebar(){
@@ -4392,6 +4408,7 @@ function subscribeToAllRecords(){
       allOwnerRecords.set(ownerUid, snapshot.docs.map(docSnap => applyLocalDirtyRecord(noteFromSnapshot(docSnap, ownerUid))));
       allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => noteVisitType(record) === 'OP');
       refreshPreviousPatientNotes();
+      refreshAllergyWarnings();
       if (searchScope === 'all'){
         renderEntries();
         if (selectedTimelineKey) renderPatientTimeline(selectedTimelineKey);
@@ -4406,6 +4423,7 @@ function subscribeToAllRecords(){
       allOwnerRecords.set(ownerUid, []);
       allRecords = Array.from(allOwnerRecords.values()).flat().filter(record => noteVisitType(record) === 'OP');
       refreshPreviousPatientNotes();
+      refreshAllergyWarnings();
       if (searchScope === 'all') renderEntries();
       else if (selectedVisitType === 'OP') renderEntries();
       else if (selectedVisitType === 'IP') renderEntries();
@@ -4456,12 +4474,6 @@ function showMobileHomeScreen(){
         <button class="home-tool-btn primary" type="button" data-home-voice-mode="Visit Note">Visit Note</button>
         <button class="home-tool-btn" type="button" data-home-voice-mode="Medical certificate">Certificate</button>
         <button class="home-tool-btn" type="button" data-home-voice-mode="Reply letter">Reply Letter</button>
-        <div class="home-tools-wrap">
-          <button class="home-tool-btn" type="button" data-home-tools-toggle>Tools</button>
-          <div class="home-tools-panel">
-            <button class="home-tool-btn" type="button" data-home-mmse-open>MMSE</button>
-          </div>
-        </div>
       </div>
     </div>`;
 }
@@ -4699,7 +4711,7 @@ function selectEntry(i,{preserveDirtyEditor = false} = {}){
 
   const identity = patientIdentity(r);
   topbarName.textContent = displayPatientName(r);
-  topbarUhid.textContent = 'UHID ' + (anonymizeEnabled ? 'hidden' : (identity.uhid || 'NIL'));
+  topbarMobile.textContent = 'Mobile Number ' + (anonymizeEnabled ? 'hidden' : (identity.mobile || 'NIL'));
   topbarAge.textContent = identity.age + ' yrs';
   topbarPatient.classList.add('visible');
   copyBtn.style.display = (!r.isDraft || r.transcription) ? 'flex' : 'none';
@@ -4731,7 +4743,7 @@ function selectEntry(i,{preserveDirtyEditor = false} = {}){
   stopMediaTracks();
   mainScroll.innerHTML = `
     <div class="note-wrap">
-      <div class="note-eyebrow">${r.name} · UHID ${r.uhid}</div>
+      <div class="note-eyebrow">${r.name} · Mobile Number ${r.mobile}</div>
       <h1 class="note-heading">${r.heading}</h1>
 
       <div class="note-block">
@@ -4804,7 +4816,7 @@ function escapeHtml(value){
 function compactNoteText(text){
   return String(text || '')
     .replace(/\r\n/g, '\n')
-    .replace(/^(Patient Name:\s*[^\n]+)\n(Age:\s*[^\n]+)\n(UHID:\s*[^\n]+)\n(Sex:\s*[^\n]+)/im, '$1 · $2 · $3 · $4')
+    .replace(/^(Patient Name:\s*[^\n]+)\n(Age:\s*[^\n]+)\n(Mobile Number:\s*[^\n]+)\n(Sex:\s*[^\n]+)/im, '$1 · $2 · $3 · $4')
     .split(/\n{2,}/)
     .map(block => {
       const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
@@ -4816,7 +4828,7 @@ function compactNoteText(text){
     .join('\n\n');
 }
 
-const NOTE_SECTION_LOOKAHEAD = '(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\\s*\\([^)]*\\))?)';
+const NOTE_SECTION_LOOKAHEAD = '(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\\s*\\([^)]*\\))?)';
 
 function normalizeNumberedSectionHeadings(text){
   return String(text || '')
@@ -4913,22 +4925,66 @@ function simpleRichNoteHtml(text){
     .join('<br>');
 }
 
+function positiveAllergyItems(text){
+  return outputSectionBodies(text, 'Allergies').flatMap(body => body.split(/[\n,;]+|\s+and\s+/i))
+    .map(value => value.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
+    .filter(value => value && !/^(?:nil|none|negative|n\/a|unknown|not known|not mentioned|not documented|nkda|nka)[.!]?$/i.test(value)
+      && !/^(?:no\b|denies\b|not allergic\b)/i.test(value));
+}
+
+function patientAllergies(record){
+  if (!record) return [];
+  const key = patientSearchKey(record), owner = noteOwnerUid(record);
+  const notes = new Map([...allRecords, ...records, record].filter(item => !item.isDeleted && noteOwnerUid(item) === owner && patientSearchKey(item) === key).map(item => [item.firestoreId, item]));
+  const items = new Map();
+  for (const note of notes.values()){
+    for (const item of positiveAllergyItems(note.transcription || '')) items.set(item.toLowerCase(), item);
+  }
+  return [...items.values()];
+}
+
+function allergyMedicineMatch(medicine, allergies){
+  const normalized = String(medicine).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return allergies.some(item => {
+    const name = item.replace(/^(?:allergic to|allergy to|allergy[: ]+|drug allergy[: ]+)\s*/i, '').split(/\s*[-:(]\s*|\s+(?:causes?|caused|causing|with)\s+/i)[0].replace(/\s+allergy$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return name.length >= 3 && (` ${normalized} `).includes(` ${name} `);
+  });
+}
+
+function refreshAllergyWarnings(){
+  const lookup = (id, owner) => records.find(r => r.firestoreId === id && noteOwnerUid(r) === owner) || allRecords.find(r => r.firestoreId === id && noteOwnerUid(r) === owner);
+  mainScroll.querySelectorAll('[data-allergy-summary]').forEach(element => {
+    const items = patientAllergies(lookup(element.dataset.allergySummary, element.dataset.allergyOwner));
+    const text = items.length ? `Recorded allergies: ${items.join('; ')}` : '';
+    if (element.textContent !== text) element.textContent = text;
+    element.hidden = !items.length;
+  });
+  mainScroll.querySelectorAll('[data-allergy-note]').forEach(element => {
+    const record = lookup(element.dataset.allergyNote, element.dataset.allergyOwner);
+    const allergies = patientAllergies(record);
+    element.querySelectorAll('.rx-medicine').forEach(medicine => medicine.classList.toggle('allergy-warning', allergyMedicineMatch(medicine.textContent, allergies)));
+  });
+}
+
 const checkedOutputSections = new Set();
 let outputSelectionPatient = '';
 
 function clinicalNoteHtml(text, record){
-  const clinical = String(text || '').replace(/^(?:Patient Name|Age|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
-  let html = richNoteHtml(clinical).replace(/<hr class="review-note-divider">(?:<strong>)?Review Note(?:\s*\([^)]*\))?:(?:<\/strong>)?/gi,
+  const clinical = String(text || '').replace(/^(?:Patient Name|Age|Mobile Number|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
+  let html = richNoteHtml(clinical, {allergies:patientAllergies(record)}).replace(/<hr class="review-note-divider">(?:<strong>)?Review Note(?:\s*\([^)]*\))?:(?:<\/strong>)?/gi,
     match => `<span class="note-review-metadata" contenteditable="false" hidden>${match.replace(/<hr[^>]*>/, '')}</span>`);
   if (!record?.firestoreId) return html;
   const patientKey = `${noteOwnerUid(record)}:${patientSearchKey(record)}`;
   if (outputSelectionPatient !== patientKey){ checkedOutputSections.clear(); outputSelectionPatient = patientKey; }
+  const allergyPattern = new RegExp(`(<strong>Allergies:</strong>)([\\s\\S]*?)(?=<strong>${NOTE_SECTION_LOOKAHEAD}:|$)`, 'gi');
+  html = html.replace(allergyPattern, (block) => positiveAllergyItems(clinical).length ? `<span class="allergy-warning">${block}</span>` : block);
   const counts = {Prescription:0, 'Treatment Plan':0};
-  return html.replace(/<strong>(Prescription|Treatment Plan):<\/strong>/g, (heading, label) => {
+  html = html.replace(/<strong>(Prescription|Treatment Plan):<\/strong>/g, (heading, label) => {
     const index = counts[label]++;
     const key = `${noteOwnerUid(record)}:${record.firestoreId}:${label}:${index}`;
     return `<span class="output-section-heading">${heading}<span class="output-section-check" contenteditable="false"><input type="checkbox" data-output-section="${label}" data-output-index="${index}" data-output-record="${escapeHtml(record.firestoreId)}" data-output-owner="${escapeHtml(noteOwnerUid(record))}" data-output-key="${escapeHtml(key)}" aria-label="Include ${label} from ${escapeHtml(formatVisitDateLabel(record.visitDate))} in print or email" ${checkedOutputSections.has(key) ? 'checked' : ''}></span></span>`;
   });
+  return `<div data-allergy-note="${escapeHtml(record.firestoreId)}" data-allergy-owner="${escapeHtml(noteOwnerUid(record))}">${html}</div>`;
 }
 
 function outputSectionBodies(text, label){
@@ -4962,16 +5018,16 @@ mainScroll.addEventListener('change', event => {
   else checkedOutputSections.delete(checkbox.dataset.outputKey);
   updatePrescriptionPrintButton();
 });
-new MutationObserver(() => updatePrescriptionPrintButton()).observe(mainScroll, {childList:true, subtree:true});
+new MutationObserver(() => { updatePrescriptionPrintButton(); syncRecorderPageLock(); refreshAllergyWarnings(); }).observe(mainScroll, {childList:true, subtree:true});
 
 function patientFieldsHtml(record){
   const identity = patientIdentity(record);
-  const input = (key, label) => `<input data-patient-field="${key}" aria-label="${label}" value="${escapeHtml(isNilLike(identity[key]) ? '' : identity[key] || '')}" ${key === 'age' ? 'inputmode="numeric"' : ''} autocomplete="off">`;
+  const input = (key, label) => `<input data-patient-field="${key}" aria-label="${label}" value="${escapeHtml(isNilLike(identity[key]) ? '' : identity[key] || '')}" ${key === 'age' ? 'inputmode="numeric"' : key === 'mobile' ? 'type="tel" inputmode="tel"' : ''} autocomplete="off">`;
   return `<div class="patient-fields" aria-label="Patient details">
     <label class="patient-name">Name${input('name', 'Name')}</label>
     <div class="patient-age-sex"><span>Age / Sex</span><div class="patient-age-sex-inputs">${input('age', 'Age')}<span aria-hidden="true">/</span>${input('sex', 'Sex')}</div></div>
-    <label class="patient-uhid">UHID${input('uhid', 'UHID')}</label>
-  </div>`;
+    <label class="patient-mobile">Mobile Number${input('mobile', 'Mobile Number')}</label>
+  </div><div class="allergy-summary" data-allergy-summary="${escapeHtml(record.firestoreId || '')}" data-allergy-owner="${escapeHtml(noteOwnerUid(record))}" role="note" hidden></div>`;
 }
 
 function wirePatientFields(targetRecords){
@@ -4982,7 +5038,7 @@ function wirePatientFields(targetRecords){
       targetRecords.forEach(record => {
         record.patientData = {...patientIdentity(record), [key]:value};
         // Identity is held separately from the clinical note.
-        record.transcription = String(record.transcription || '').replace(/^(?:Patient Name|Age|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
+        record.transcription = String(record.transcription || '').replace(/^(?:Patient Name|Age|Mobile Number|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
         record.saved = false;
         markRecordDirty(record);
         syncRecordCollections(record);
@@ -4997,7 +5053,7 @@ function wirePatientFields(targetRecords){
   });
 }
 
-function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMalayalam !== false} = {}){
+function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMalayalam !== false, allergies = []} = {}){
   const normalized = formatStoredReviewNotes(String(text || '')).replace(/\r\n/g, '\n');
   const prescriptionPattern = new RegExp(`(^|\\n)(Prescription:)\\s*\\n([\\s\\S]*?)(?=\\n+${NOTE_SECTION_LOOKAHEAD}:|$)`, 'gi');
   let html = '';
@@ -5005,7 +5061,7 @@ function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMala
   for (const match of normalized.matchAll(prescriptionPattern)){
     const labelIndex = match.index + match[1].length;
     html += simpleRichNoteHtml(normalized.slice(lastIndex, labelIndex));
-    html += `<strong>${escapeHtml(match[2])}</strong><br><div class="rx-table">${prescriptionRowsHtml(match[3], {includeMalayalam})}</div>`;
+    html += `<strong>${escapeHtml(match[2])}</strong><br><div class="rx-table">${prescriptionRowsHtml(match[3], {includeMalayalam, allergies})}</div>`;
     lastIndex = match.index + match[0].length;
   }
   html += simpleRichNoteHtml(normalized.slice(lastIndex));
@@ -5055,7 +5111,7 @@ function currentPrintPrescriptionRecord(){
 function prescriptionTextFromNote(text){
   const note = formatStoredReviewNotes(String(text || ''));
   const sections = [];
-  const pattern = /(?:^|\n)Prescription:[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):|$)/gi;
+  const pattern = /(?:^|\n)Prescription:[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):|$)/gi;
   for (const match of note.matchAll(pattern)){
     const prescription = String(match[1] || '').trim();
     if (prescription && !isNilLike(prescription)) sections.push(prescription);
@@ -5342,6 +5398,7 @@ function visitNotePrintHtml(note, title = 'WOYZ Notes Print'){
   .visit-print-footer.layout-large{ font-size:8pt; }
   h1{ margin:0 0 10px; font-size:18pt; line-height:1.15; }
   strong{ font-weight:700; }
+  .allergy-warning{color:#b42318!important;font-weight:700;}
   @media print{
     body{ print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   }
@@ -5364,7 +5421,7 @@ function prescriptionPrintHtml(activeRecord, prescription, sourceText, title = '
   const patientLine = [
     `Age: ${ageLabel}`,
     `Sex: ${identity.sex || activeRecord.patientSex || 'NIL'}`,
-    `UHID: ${anonymizeEnabled ? 'hidden' : (identity.uhid || 'NIL')}`,
+    `Mobile Number: ${anonymizeEnabled ? 'hidden' : (identity.mobile || 'NIL')}`,
     fullVisitDateLabel(activeRecord.visitDate || dateInputValue(selectedVisitDate))
   ].join(' | ');
   const layout = prescriptionLayout();
@@ -5475,6 +5532,7 @@ function prescriptionPrintHtml(activeRecord, prescription, sourceText, title = '
   .rx-print-footer.layout-medium,
   .rx-print-footer.layout-large{ font-size:8pt; }
   strong{ font-weight:700; }
+  .allergy-warning{color:#b42318!important;font-weight:700;}
   @media print{
     body{ print-color-adjust:exact; -webkit-print-color-adjust:exact; }
   }
@@ -5487,7 +5545,7 @@ function prescriptionPrintHtml(activeRecord, prescription, sourceText, title = '
       <div class="rx">
         <h1>${escapeHtml(displayPatientName(activeRecord))}</h1>
         <div class="patient-line">${escapeHtml(patientLine)}</div>
-        ${prescription ? `<div class="rx-heading">RX</div><div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false})}</div>` : ''}
+        ${prescription ? `<div class="rx-heading">RX</div><div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false, allergies:patientAllergies(activeRecord)})}</div>` : ''}
         ${treatmentPlan ? `<div class="rx-heading">ADVICE</div><section class="rx-treatment">${richNoteHtml(anonymizeTextForRecord(treatmentPlan, activeRecord), {includeMalayalam:false})}</section>` : ''}
         ${layout.signature.enabled !== false && layout.signature.text ? `<section class="rx-print-signature ${layoutBlockClass(layout.signature)}">${printBlockHtml(layout.signature, {firstLineStrong:true})}</section>` : ''}
       </div>
@@ -5504,6 +5562,11 @@ function emailTitleForRecord(record){
   return [title, patient].filter(Boolean).join(' - ');
 }
 
+function patientEmailDetails(record){
+  const patient = patientIdentity(record);
+  return `Patient Name: ${patient.name}\nAge: ${patient.age}\nMobile Number: ${patient.mobile || 'NIL'}\nSex: ${patient.sex}`;
+}
+
 function buildEmailPayload(to, mode = 'visit'){
   const activeRecord = mode === 'prescription' ? currentPrintPrescriptionRecord() : currentPrintVisitRecord();
   if (!activeRecord) throw new Error('No note is selected.');
@@ -5518,7 +5581,7 @@ function buildEmailPayload(to, mode = 'visit'){
   if (!note) throw new Error('This note is empty.');
   const identity = patientIdentity(activeRecord);
   const title = mode === 'prescription'
-    ? ['Prescription', displayPatientName(activeRecord)].filter(Boolean).join(' - ')
+    ? `Prescription - ${displayPatientName(activeRecord)} - ${identity.age} - ${identity.sex}`
     : emailTitleForRecord(activeRecord);
   return {
     to,
@@ -5527,11 +5590,11 @@ function buildEmailPayload(to, mode = 'visit'){
       name:displayPatientName(activeRecord),
       age:identity.age || activeRecord.patientAge || '',
       sex:identity.sex || activeRecord.patientSex || '',
-      uhid:anonymizeEnabled ? 'hidden' : (identity.uhid || activeRecord.patientUhid || ''),
+      mobile:anonymizeEnabled ? 'hidden' : (identity.mobile || activeRecord.patientMobile || ''),
       date:fullVisitDateLabel(activeRecord.visitDate || dateInputValue(selectedVisitDate))
     },
-    sections:[{title, value:note}],
-    bodyText:note,
+    sections:[{title:'Patient details', value:patientEmailDetails(activeRecord)}],
+    bodyText:patientEmailDetails(activeRecord),
     printHtml:mode === 'prescription'
       ? prescriptionPrintHtml(activeRecord, prescription, sourceText, 'WOYZ Prescription Email')
       : visitNotePrintHtml(note, 'WOYZ Notes Email'),
@@ -5584,7 +5647,7 @@ async function sendCurrentNoteEmail(){
   }
 }
 
-function prescriptionRowsHtml(text, {includeMalayalam = true} = {}){
+function prescriptionRowsHtml(text, {includeMalayalam = true, allergies = []} = {}){
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n').map(line => line.trim()).filter(Boolean);
   const rows = [];
   let pendingNumber = null;
@@ -5597,7 +5660,7 @@ function prescriptionRowsHtml(text, {includeMalayalam = true} = {}){
     return Boolean(match && isMedicineLine(match[1]));
   };
   const isMalayalamLine = line => /[\u0D00-\u0D7F]/.test(line);
-  const isSectionHeading = line => /^(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):$/i.test(line);
+  const isSectionHeading = line => /^(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):$/i.test(line);
   for (let index = 0; index < lines.length; index += 1){
     if (isSectionHeading(lines[index])) break;
     const numberOnlyMatch = lines[index].match(/^(\d+[.)])$/);
@@ -5650,7 +5713,7 @@ function prescriptionRowsHtml(text, {includeMalayalam = true} = {}){
   return rows.map(row => `
     <div class="rx-row">
       <div class="rx-number">${escapeHtml(row.number)}</div>
-      <div class="rx-medicine">${escapeHtml(row.medicine)}</div>
+      <div class="rx-medicine ${allergyMedicineMatch(row.medicine, allergies) ? 'allergy-warning' : ''}">${escapeHtml(row.medicine)}</div>
       <div class="rx-instructions">
         ${row.english ? `<div>${escapeHtml(row.english)}</div>` : ''}
         ${includeMalayalam && row.local ? `<div>${escapeHtml(row.local)}</div>` : ''}
@@ -6254,6 +6317,16 @@ function setContinuationStatus(message){
   continuationStatus.textContent = message;
 }
 
+function syncRecorderPageLock(locked = mobileUserLayout.matches && continuationState.open){
+  const app = document.querySelector('.app');
+  app.inert = false;
+  app.querySelectorAll('button,a,input,select,textarea').forEach(control => { control.inert = locked; });
+  app.querySelectorAll('[contenteditable="true"], [data-recorder-editable]').forEach(editor => {
+    if (locked){ editor.dataset.recorderEditable = 'true'; editor.contentEditable = 'false'; }
+    else if (editor.dataset.recorderEditable){ editor.contentEditable = 'true'; delete editor.dataset.recorderEditable; }
+  });
+}
+
 function renderContinuationDock(){
   const activeDraft = records.find(record => recordMatchesOwnerAndId(record, continuationState.targetOwnerUid, continuationState.targetId));
   const selectedMode = activeDraft?.selectedMode || '';
@@ -6265,7 +6338,7 @@ function renderContinuationDock(){
     : continuationState.documentMode || 'Continue dictation';
   continuationDock.classList.toggle('visible', continuationState.open);
   const locked = mobileUserLayout.matches && continuationState.open;
-  document.querySelector('.app').inert = locked;
+  syncRecorderPageLock(locked);
   continueNoteBtn.inert = locked;
   document.body.classList.toggle('recording-panel-open', locked);
   document.getElementById('transcriptionProgress').hidden = !continuationState.processing;
@@ -6960,7 +7033,7 @@ function formatStoredReviewNotes(text){
     (match, heading, body) => `${heading}\n${formatContinuationText(body)}`
   );
   return note.replace(
-    /((?:Review of Investigations|Current Medications|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription):)[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\s*\([^)]*\))?):|$)/g,
+    /((?:Review of Investigations|Current Medications|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription):)[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\s*\([^)]*\))?):|$)/g,
     (match, label, value) => `${label}\n${formatSectionValue(label, value)}`
   );
 }
@@ -7025,7 +7098,7 @@ async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visit
   const extractedPatientData = {
     name:String(parsed.patientName || 'NIL').trim(),
     age:String(parsed.patientAge || 'NIL').trim(),
-    uhid:String(parsed.patientUhid || 'NIL').trim(),
+    mobile:String(parsed.patientMobile || 'NIL').trim(),
     sex:String(parsed.patientSex || 'NIL').trim()
   };
   const patientData = patientDataWithTrustedFallback(extractedPatientData, fallbackPatientData);
@@ -7130,7 +7203,7 @@ async function generateContentWithRetry({apiKey,audioBlob,audioData,systemPrompt
 }
 
 function formatGeneratedOutput(data, mode, patient, visitType = selectedVisitType){
-  const patientHeader = `Patient Name: ${patient.name}\nAge: ${patient.age}\nUHID: ${patient.uhid}`;
+  const patientHeader = `Patient Name: ${patient.name}\nAge: ${patient.age}\nMobile Number: ${patient.mobile}`;
   if (mode === 'Review dictation' || mode === 'Reply letter'){
     return `${patientHeader}\n\n${String(data.text || '').trim()}`.trim();
   }
@@ -7355,7 +7428,7 @@ function addStandardBloodUnit(line){
 
 function formatMedicationList(text){
   const medicineStart = '(?:Tab\\.?|Tablet|Cap\\.?|Capsule|Inj\\.?|Injection|Syp\\.?|Syrup|Drops?|Patch|Cream|Ointment|Nebulization|Inhaler)';
-  const nestedSectionHeading = /^(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\s*\([^)]*\))?):$/i;
+  const nestedSectionHeading = /^(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\s*\([^)]*\))?):$/i;
   const sourceLines = stripExistingListNumbers(text).split('\n');
   const nextHeadingIndex = sourceLines.findIndex((line, index) => index > 0 && nestedSectionHeading.test(line));
   const source = (nextHeadingIndex >= 0 ? sourceLines.slice(0, nextHeadingIndex) : sourceLines).join('\n');
@@ -7481,7 +7554,7 @@ async function createVoiceDraft(mode = null){
     const shouldPrefillPatient = ['Medical certificate','Reply letter'].includes(selectedMode)
       || (window.matchMedia('(max-width:600px)').matches && !selectedMode && explicitSourceRecord);
     const sourceRecord = shouldPrefillPatient ? explicitSourceRecord : null;
-    const sourcePatientData = sourceRecord ? patientDataWithFallback(patientIdentity(sourceRecord)) : {name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'};
+    const sourcePatientData = sourceRecord ? patientDataWithFallback(patientIdentity(sourceRecord)) : {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'};
     const sourceKey = sourceRecord && !sourceRecord.voiceDraft ? patientSearchKey(sourceRecord) : null;
     openPreparingNewVoiceDock(selectedMode);
     if (searchScope === 'all'){
@@ -7579,7 +7652,7 @@ async function createManualDraft(){
       selectedMode:'Manual note',
       status:'Type your note',
       transcription:MANUAL_NOTE_TEMPLATE,
-      patientData:{name:'NIL',age:'NIL',uhid:'NIL',sex:'NIL'}
+      patientData:{name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'}
     };
     pendingSelectId = newDraftRef.id;
     selectLocalDraftFromSnapshot({id:newDraftRef.id,data:()=>draftData});
@@ -8141,6 +8214,15 @@ emailRxBtn.addEventListener('click', () => openEmailDialog('prescription'));
 emailVisitBtn.addEventListener('click', () => openEmailDialog('visit'));
 emailCloseBtn.addEventListener('click', closeEmailDialog);
 emailCancelBtn.addEventListener('click', closeEmailDialog);
+document.getElementById('emailPreviewBtn').addEventListener('click', () => {
+  try{
+    const payload = buildEmailPayload(emailRecipientInput.value.trim(), 'prescription');
+    document.getElementById('emailPreviewDetails').textContent = `Subject: ${payload.title}\n\n${payload.bodyText}`;
+    document.getElementById('emailPreviewFrame').srcdoc = payload.printHtml;
+    document.getElementById('emailPreviewModal').classList.add('open');
+  }catch(error){ setEmailStatus(error.message, 'error'); }
+});
+document.getElementById('emailPreviewCloseBtn').addEventListener('click', () => document.getElementById('emailPreviewModal').classList.remove('open'));
 emailSendBtn.addEventListener('click', sendCurrentNoteEmail);
 emailModal.addEventListener('click', event => { if (event.target === emailModal) closeEmailDialog(); });
 emailRecipientInput.addEventListener('input', () => {
@@ -8403,7 +8485,8 @@ function extractPatientFromNote(text, fallback = {}){
   return {
     name:find(/^(?:Patient\s+)?Name:\s*([^\n·]+)/im) || fallback?.name || 'NIL',
     age:find(/^Age:\s*(.+)$/im) || fallback?.age || 'NIL',
-    uhid:find(/^UHID:\s*(.+)$/im) || fallback?.uhid || 'NIL',
+    mobile:find(/^Mobile Number:\s*(.+)$/im) || fallback?.mobile || 'NIL',
+    uhid:fallback?.uhid || find(/^UHID:\s*(.+)$/im) || 'NIL',
     sex:find(/^Sex:\s*(.+)$/im) || fallback?.sex || 'NIL'
   };
 }
@@ -8506,7 +8589,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=26', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=27', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

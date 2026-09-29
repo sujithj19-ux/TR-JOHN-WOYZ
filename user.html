@@ -2202,6 +2202,7 @@
   .finance-card strong{display:block;margin-top:7px;font:900 22px 'Inter',sans-serif;color:var(--ink);}
   .finance-unpaid-toggle{width:100%;min-height:42px;border:1px solid var(--teal);border-radius:10px;background:var(--teal);color:#fff;font:900 13px 'Inter',sans-serif;}
   .finance-unpaid-list{display:grid;gap:8px;margin-top:12px;}
+  .finance-unpaid-list[hidden]{display:none;}
   .finance-unpaid-item{border:1px solid var(--border);border-radius:10px;background:#fff;padding:10px 12px;font:700 13px 'Inter',sans-serif;color:var(--ink);}
   .finance-unpaid-item small{display:block;margin-top:4px;color:var(--muted);font:700 11px 'IBM Plex Mono',monospace;}
 </style>
@@ -3622,7 +3623,7 @@ function latestVisitRecordKeys(recordsList){
 }
 
 function entryTitleRowHtml(record, title, showFee){
-  return `<div class="entry-title-row">${consultationFeeInputHtml(record, showFee)}<h2 class="op-all-entry-title">${escapeHtml(title)}</h2></div>`;
+  return `<div class="entry-title-row"><h2 class="op-all-entry-title">${escapeHtml(title)}</h2>${consultationFeeInputHtml(record, showFee)}</div>`;
 }
 
 function compactReviewHeadingDates(text){
@@ -7016,7 +7017,7 @@ async function stopAndAppendContinuation(){
           }
         );
         if (!continuationState.open) return;
-        appendDocumentText(generated.text, continuationState.documentMode);
+        await appendDocumentText(generated.text, continuationState.documentMode);
         setContinuationStatus(`${continuationState.documentMode} added. Review and save.`);
       }else{
         const addition = await runUntilGenerated(
@@ -7139,13 +7140,46 @@ function continuationTargetRecord(){
       || (recordMatchesOwnerAndId(timelineRecord, continuationState.targetOwnerUid, continuationState.targetId) ? timelineRecord : null);
 }
 
-function appendDocumentText(generatedText, mode){
+async function appendDocumentText(generatedText, mode){
   const text = String(generatedText || '').trim();
   if (!text) return;
-  const record = continuationTargetRecord();
-  if (!record) return;
+  const source = continuationTargetRecord();
+  if (!source || noteOwnerUid(source) !== currentUser?.uid) throw new Error('Select your patient before creating this document.');
   const label = mode === 'Medical certificate' ? 'Medical Certificate' : 'Reply Letter';
-  appendTextToRecord(record, `${label} (${reviewTimestampLabel()}):\n${text}`, {review:false});
+  const now = new Date();
+  const today = dateInputValue(now);
+  const noteRef = doc(userNotesCollection());
+  const data = {
+    heading:label,
+    selectedMode:label,
+    kind:'generated',
+    voiceDraft:false,
+    isDraft:false,
+    saved:false,
+    everSaved:false,
+    visitDate:today,
+    visitType:'OP',
+    admissionDate:null,
+    createdAt:serverTimestamp(),
+    createdAtLabel:now.toLocaleString('en-GB'),
+    transcription:`${label} (${reviewTimestampLabel()}):\n${text}`,
+    patientData:patientDataWithFallback(patientIdentity(source)),
+    sourcePatientKey:source.sourcePatientKey || patientSearchKey(source),
+    sourceNoteId:source.firestoreId || null,
+    carriedForwardFrom:source.firestoreId || null,
+    status:'Note ready',
+    updatedAt:serverTimestamp()
+  };
+  await setDoc(noteRef, data, {merge:true});
+  selectedVisitDate = now;
+  selectedVisitType = 'OP';
+  clearTimelineSelection();
+  pendingSelectId = noteRef.id;
+  setSearchScope('today');
+  selectLocalDraftFromSnapshot({id:noteRef.id, data:() => ({...data, createdAt:{toMillis:() => now.getTime()}})});
+  updateDateNavigation();
+  subscribeToSelectedDate();
+  mainScroll.scrollTop = 0;
 }
 
 function appendTextToRecord(record, text, {review = false, scrollToAppended = false} = {}){
@@ -9059,7 +9093,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=31', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=33', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

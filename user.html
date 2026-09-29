@@ -2366,8 +2366,6 @@
         <div class="empty-sub">Choose a patient on the left to open their latest note.</div>
         <div class="home-tool-actions" aria-label="Homepage tools">
           <button class="home-tool-btn primary" type="button" data-home-voice-mode="Visit Note">Visit Note</button>
-          <button class="home-tool-btn" type="button" data-home-voice-mode="Medical certificate">Certificate</button>
-          <button class="home-tool-btn" type="button" data-home-voice-mode="Reply letter">Reply Letter</button>
         </div>
       </div>
     </div>
@@ -3453,8 +3451,30 @@ function reviewNoteTimelineEntriesForRecord(record){
   });
 }
 
+function documentTimelineEntriesForRecord(record){
+  if (/^(?:Medical Certificate|Reply Letter)$/i.test(normalizedEntryMode(record))) return [];
+  const text = formatStoredReviewNotes(record?.transcription || '').replace(/\r\n/g, '\n');
+  const pattern = new RegExp(`(^|\\n)(Medical Certificate|Reply Letter)(?:\\s*\\(([^)]*)\\))?:\\s*\\n([\\s\\S]*?)(?=\\n+(?:${NOTE_SECTION_LOOKAHEAD}):|$)`, 'gi');
+  return Array.from(text.matchAll(pattern)).map((match, index) => {
+    const label = match[2].trim();
+    const timestampLabel = match[3] || '';
+    const body = String(match[4] || '').trim();
+    return {
+      index,
+      label,
+      title:`${label} - ${timestampLabel || opTimelineDateTimeLabel(record)}`,
+      text:`${label}${timestampLabel ? ` (${timestampLabel})` : ''}:\n${body}`.trim()
+    };
+  }).filter(entry => entry.text);
+}
+
+function stripDocumentTimelineEntries(text){
+  const pattern = new RegExp(`(^|\\n)\\s*(?:Medical Certificate|Reply Letter)(?:\\s*\\([^)]*\\))?:\\s*\\n[\\s\\S]*?(?=\\n+(?:${NOTE_SECTION_LOOKAHEAD}):|$)`, 'gi');
+  return String(text || '').replace(pattern, '').trim();
+}
+
 function opTimelineVisibleEntryCount(recordsForTimeline){
-  return recordsForTimeline.reduce((total, record) => total + 1 + reviewNoteTimelineEntriesForRecord(record).length, 0);
+  return recordsForTimeline.reduce((total, record) => total + 1 + reviewNoteTimelineEntriesForRecord(record).length + documentTimelineEntriesForRecord(record).length, 0);
 }
 
 function selectedOpTimelineRecords(){
@@ -3733,16 +3753,33 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
   updatePrescriptionPrintButton();
   setMobileBottomActionsVisible(true);
   const feeRecordIds = latestVisitRecordKeys(timelineRecords);
-  const renderedNotes = timelineRecords.map(record => {
+  const renderedNotes = timelineRecords.flatMap(record => {
     const displayText = displayNoteTextForRecord(record, record.transcription || '');
-    const entryTitle = entryTitleRowHtml(record, timelineTitleForRecord(record), feeRecordIds.has(record.firestoreId));
-    return `
-      <article class="op-all-entry">
-        ${entryTitle}
-        <div class="op-all-entry-editor note-editor" data-op-all-entry-editor="${escapeHtml(record.firestoreId)}" data-op-all-entry-owner="${escapeHtml(noteOwnerUid(record) || '')}" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable ${escapeHtml(opTimelineEntryLabel(record))}">${clinicalNoteHtml(displayText, record)}</div>
-        ${noteTimeHtml(record)}
-      </article>
-    `;
+    const isDocumentEntry = /^(?:Medical Certificate|Reply Letter)$/i.test(normalizedEntryMode(record));
+    const baseText = isDocumentEntry ? displayText : stripDocumentTimelineEntries(displayText);
+    const entries = [];
+    if (baseText){
+      const entryTitle = entryTitleRowHtml(record, timelineTitleForRecord(record), !isDocumentEntry && feeRecordIds.has(record.firestoreId));
+      entries.push(`
+        <article class="op-all-entry">
+          ${entryTitle}
+          <div class="op-all-entry-editor note-editor" data-op-all-entry-editor="${escapeHtml(record.firestoreId)}" data-op-all-entry-owner="${escapeHtml(noteOwnerUid(record) || '')}" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Editable ${escapeHtml(opTimelineEntryLabel(record))}">${clinicalNoteHtml(baseText, record)}</div>
+          ${noteTimeHtml(record)}
+        </article>
+      `);
+    }
+    if (!isDocumentEntry){
+      documentTimelineEntriesForRecord(record).forEach(documentEntry => {
+        entries.push(`
+          <article class="op-all-entry">
+            <h2 class="op-all-entry-title">${escapeHtml(documentEntry.title)}</h2>
+            <div class="op-all-entry-editor note-editor readonly-note" spellcheck="true" role="textbox" aria-multiline="true" aria-label="${escapeHtml(documentEntry.title)}">${clinicalNoteHtml(documentEntry.text, record)}</div>
+            ${noteTimeHtml(record)}
+          </article>
+        `);
+      });
+    }
+    return entries;
   }).join('');
   mainScroll.innerHTML = `
     <div class="generated-note op-all-editable">
@@ -4598,8 +4635,6 @@ function showMobileHomeScreen(){
       <div class="empty-sub">Please select template to create a new note</div>
       <div class="home-tool-actions" aria-label="Homepage tools">
         <button class="home-tool-btn primary" type="button" data-home-voice-mode="Visit Note">Visit Note</button>
-        <button class="home-tool-btn" type="button" data-home-voice-mode="Medical certificate">Certificate</button>
-        <button class="home-tool-btn" type="button" data-home-voice-mode="Reply letter">Reply Letter</button>
       </div>
     </div>`;
 }
@@ -4959,7 +4994,7 @@ const NOTE_SECTION_LOOKAHEAD = '(?:Patient Name|Age|Mobile Number|UHID|Sex|Prese
 function normalizeNumberedSectionHeadings(text){
   return String(text || '')
     .replace(/\r\n/g, '\n')
-    .replace(/(^|\n)\s*\d+[.)]\s*(Review Note(?:\s*\([^)]*\))?|Review of Investigations|Current Medications|Medications|Prescription|Rx|R\/x|Advice|Instructions?|Treatment Plan|Follow[- ]?up):\s*/gi, (match, leadingBreak, label) => {
+    .replace(/(^|\n)\s*\d+[.)]\s*(Review Note(?:\s*\([^)]*\))?|Review of Investigations|Current Medications|Medications|Prescription|Rx|R\/x|Advice|Instructions?|Treatment Plan|Follow[- ]?up|Medical Certificate|Reply Letter):\s*/gi, (match, leadingBreak, label) => {
       const normalizedLabel = /^(?:Rx|R\/x)$/i.test(label.trim()) ? 'Prescription' : label.trim();
       return `${leadingBreak}${leadingBreak ? '\n' : ''}${normalizedLabel}:\n`;
     })
@@ -5347,7 +5382,7 @@ function currentSelectedPrintableOutput(){
 function prescriptionTextFromNote(text){
   const note = formatStoredReviewNotes(String(text || ''));
   const sections = [];
-  const pattern = /(?:^|\n)Prescription:[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):|$)/gi;
+  const pattern = /(?:^|\n)Prescription:[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Medical Certificate(?:\s*\([^)]*\))?|Reply Letter(?:\s*\([^)]*\))?|Review Note(?:\s*\([^)]*\))?):|$)/gi;
   for (const match of note.matchAll(pattern)){
     const prescription = String(match[1] || '').trim();
     if (prescription && !isNilLike(prescription)) sections.push(prescription);
@@ -5924,7 +5959,7 @@ function prescriptionRowsHtml(text, {includeMalayalam = true, allergies = []} = 
     return Boolean(match && isMedicineLine(match[1]));
   };
   const isMalayalamLine = line => /[\u0D00-\u0D7F]/.test(line);
-  const isSectionHeading = line => /^(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):$/i.test(line);
+  const isSectionHeading = line => /^(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Medical Certificate(?:\s*\([^)]*\))?|Reply Letter(?:\s*\([^)]*\))?|Review Note(?:\s*\([^)]*\))?):$/i.test(line);
   for (let index = 0; index < lines.length; index += 1){
     if (isSectionHeading(lines[index])) break;
     const numberOnlyMatch = lines[index].match(/^(\d+[.)])$/);
@@ -6875,7 +6910,6 @@ function closeContinuationDock({releaseMic = true, preserveNewDraftCancel = fals
 async function closeVoiceDraftWithConfirmation(){
   if (continuationState.mode !== 'new'){
     closeContinuationDock();
-    openHomeForSelectedDate();
     return;
   }
   if (!window.confirm('Close and delete this draft note?')) return;
@@ -7425,7 +7459,7 @@ async function sendContinuationAudioToGemini(audioBlob, apiKey, onRetry){
 }
 
 function formatContinuationText(text){
-  const sectionBoundary = '(?:Review Note(?:\\s*\\([^)]*\\))?|Review of Investigations|Current Medications|Medications|Prescription|Rx|R\\/x|Advice|Instructions?|Treatment Plan|Follow[- ]?up)';
+  const sectionBoundary = '(?:Review Note(?:\\s*\\([^)]*\\))?|Review of Investigations|Current Medications|Medications|Prescription|Rx|R\\/x|Advice|Instructions?|Treatment Plan|Follow[- ]?up|Medical Certificate(?:\\s*\\([^)]*\\))?|Reply Letter(?:\\s*\\([^)]*\\))?)';
   const numberedHeadingPrefix = '\\s*(?:\\d+[.)]\\s*)?';
   const normalized = String(text || '')
     .replace(new RegExp(`${numberedHeadingPrefix}(Review Note(?:\\s*\\([^)]*\\))?:\\s*)`, 'gi'), '\n\nReview Note:\n')
@@ -7452,11 +7486,11 @@ function formatContinuationText(text){
 function formatStoredReviewNotes(text){
   const normalizedText = normalizeNumberedSectionHeadings(text);
   const note = normalizedText.replace(
-    /(Review Note(?:\s*\([^)]*\))?:)\n([\s\S]*?)(?=\n+(?:Patient Name|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\s*\([^)]*\))?):|$)/g,
+    /(Review Note(?:\s*\([^)]*\))?:)\n([\s\S]*?)(?=\n+(?:Patient Name|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Medical Certificate(?:\s*\([^)]*\))?|Reply Letter(?:\s*\([^)]*\))?|Review Note(?:\s*\([^)]*\))?):|$)/g,
     (match, heading, body) => `${heading}\n${formatContinuationText(body)}`
   );
   return note.replace(
-    /((?:Review of Investigations|Current Medications|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription):)[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\s*\([^)]*\))?):|$)/g,
+    /((?:Review of Investigations|Current Medications|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription):)[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Medical Certificate(?:\s*\([^)]*\))?|Reply Letter(?:\s*\([^)]*\))?|Review Note(?:\s*\([^)]*\))?):|$)/g,
     (match, label, value) => `${label}\n${formatSectionValue(label, value)}`
   );
 }
@@ -7854,7 +7888,7 @@ function addStandardBloodUnit(line){
 
 function formatMedicationList(text){
   const medicineStart = '(?:Tab\\.?|Tablet|Cap\\.?|Capsule|Inj\\.?|Injection|Syp\\.?|Syrup|Drops?|Patch|Cream|Ointment|Nebulization|Inhaler)';
-  const nestedSectionHeading = /^(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\s*\([^)]*\))?):$/i;
+  const nestedSectionHeading = /^(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Medical Certificate(?:\s*\([^)]*\))?|Reply Letter(?:\s*\([^)]*\))?|Review Note(?:\s*\([^)]*\))?):$/i;
   const sourceLines = stripExistingListNumbers(text).split('\n');
   const nextHeadingIndex = sourceLines.findIndex((line, index) => index > 0 && nestedSectionHeading.test(line));
   const source = (nextHeadingIndex >= 0 ? sourceLines.slice(0, nextHeadingIndex) : sourceLines).join('\n');
@@ -9093,7 +9127,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=33', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=34', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

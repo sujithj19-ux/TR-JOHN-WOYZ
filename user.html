@@ -497,8 +497,7 @@
   .layout-textarea{ width:100%; min-height:86px; resize:vertical; border:1.5px solid var(--border); border-radius:10px; padding:11px 12px; font:13px/1.45 'Inter',sans-serif; outline:none; }
   .layout-rich-editor{ width:100%; min-height:86px; border:1.5px solid var(--border); border-radius:10px; padding:11px 12px; font:13px/1.45 'Inter',sans-serif; outline:none; background:#fff; white-space:pre-wrap; }
   .layout-inline-toolbar{ display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin:8px 0; }
-  .layout-inline-toolbar button,.layout-inline-toolbar select{ min-height:31px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--ink); padding:0 9px; font:800 12px 'Inter',sans-serif; cursor:pointer; }
-  .layout-inline-toolbar select{ cursor:pointer; }
+  .layout-inline-toolbar button{ min-height:31px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--ink); padding:0 9px; font:800 12px 'Inter',sans-serif; cursor:pointer; }
   .layout-inline-bold{ font-weight:700; }
   .layout-inline-italic{ font-style:italic; }
   .layout-inline-small{ font-size:8.5pt; }
@@ -2472,12 +2471,9 @@
       <div class="layout-inline-toolbar" data-layout-toolbar="header">
         <button type="button" data-layout-inline="bold">Bold</button>
         <button type="button" data-layout-inline="italic">Italic</button>
-        <select data-layout-inline="size" aria-label="Selected text size">
-          <option value="">Size</option>
-          <option value="small">Small</option>
-          <option value="medium">Medium</option>
-          <option value="large">Large</option>
-        </select>
+        <button type="button" data-layout-inline="size" data-layout-size="small">Small</button>
+        <button type="button" data-layout-inline="size" data-layout-size="medium">Normal</button>
+        <button type="button" data-layout-inline="size" data-layout-size="large">Large</button>
       </div>
       <div class="layout-rich-editor" id="layoutHeaderInput" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true"></div>
       <div class="layout-controls" data-layout-controls="header">
@@ -2499,12 +2495,9 @@
       <div class="layout-inline-toolbar" data-layout-toolbar="footer">
         <button type="button" data-layout-inline="bold">Bold</button>
         <button type="button" data-layout-inline="italic">Italic</button>
-        <select data-layout-inline="size" aria-label="Selected text size">
-          <option value="">Size</option>
-          <option value="small">Small</option>
-          <option value="medium">Medium</option>
-          <option value="large">Large</option>
-        </select>
+        <button type="button" data-layout-inline="size" data-layout-size="small">Small</button>
+        <button type="button" data-layout-inline="size" data-layout-size="medium">Normal</button>
+        <button type="button" data-layout-inline="size" data-layout-size="large">Large</button>
       </div>
       <div class="layout-rich-editor" id="layoutFooterInput" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true"></div>
       <div class="layout-controls" data-layout-controls="footer">
@@ -2526,12 +2519,9 @@
       <div class="layout-inline-toolbar" data-layout-toolbar="signature">
         <button type="button" data-layout-inline="bold">Bold</button>
         <button type="button" data-layout-inline="italic">Italic</button>
-        <select data-layout-inline="size" aria-label="Selected text size">
-          <option value="">Size</option>
-          <option value="small">Small</option>
-          <option value="medium">Medium</option>
-          <option value="large">Large</option>
-        </select>
+        <button type="button" data-layout-inline="size" data-layout-size="small">Small</button>
+        <button type="button" data-layout-inline="size" data-layout-size="medium">Normal</button>
+        <button type="button" data-layout-inline="size" data-layout-size="large">Large</button>
       </div>
       <div class="layout-rich-editor" id="layoutSignatureInput" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true"></div>
       <div class="layout-controls" data-layout-controls="signature">
@@ -8584,17 +8574,13 @@ mmseSections.addEventListener('click', event => {
   renderMmseModal();
 });
 layoutModal.querySelectorAll('[data-layout-toolbar]').forEach(toolbar => {
-  toolbar.addEventListener('mousedown', event => {
+  toolbar.addEventListener('pointerdown', event => {
     if (event.target.closest('button[data-layout-inline]')) event.preventDefault();
   });
   toolbar.addEventListener('click', event => {
     const button = event.target.closest('button[data-layout-inline]');
     if (!button) return;
-    applyLayoutInlineFormat(toolbar, button.dataset.layoutInline);
-  });
-  toolbar.querySelector('select[data-layout-inline="size"]')?.addEventListener('change', event => {
-    applyLayoutInlineFormat(toolbar, 'size', event.target.value);
-    event.target.value = '';
+    applyLayoutInlineFormat(toolbar, button.dataset.layoutInline, button.dataset.layoutSize || '');
   });
 });
 layoutModal.querySelectorAll('.layout-rich-editor').forEach(editor => {
@@ -8844,7 +8830,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=29', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=30', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

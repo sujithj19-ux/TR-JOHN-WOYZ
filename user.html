@@ -4278,18 +4278,12 @@ function patientDataChanged(previous = {}, next = {}){
 }
 
 function refreshActivePatientIdentityFromText(record, text, {immediate = false} = {}){
-  if (!record || record.voiceDraft || record.transcribing) return;
-  const nextPatientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(text, record.patientData);
-  if (!patientDataChanged(record.patientData, nextPatientData)) return;
-  record.patientData = nextPatientData;
-  markRecordDirty(record);
-  syncRecordCollections(record);
-  clearTimeout(sidebarIdentityRefreshTimer);
-  const refresh = () => {
-    renderEntries();
-  };
-  if (immediate) refresh();
-  else sidebarIdentityRefreshTimer = setTimeout(refresh, 250);
+  // Patient credentials are captured on initial note creation and then edited only
+  // through the patient detail fields. Dictated or typed clinical text must not
+  // overwrite name, age, sex, or mobile after the first visit.
+  void record;
+  void text;
+  void immediate;
 }
 
 function clearRecordDirty(record){
@@ -4338,7 +4332,6 @@ function updateOpAllEntryRecordFromEditor(editor){
   const text = editorPlainText(editor);
   if (text !== (record.transcription || '')){
     record.transcription = text;
-    record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(text, record.patientData);
     record.saved = false;
     markRecordDirty(record);
     syncRecordCollections(record);
@@ -4767,7 +4760,6 @@ async function saveOpAllEntries(){
   const uniqueRecords = Array.from(new Map(recordsToSave.map(record => [recordLocalKey(record), record])).values());
   if (!uniqueRecords.length) return true;
   await Promise.all(uniqueRecords.map(async record => {
-    record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(record.transcription, record.patientData);
     record.saved = true;
     record.everSaved = true;
     record.isDraft = false;
@@ -7365,7 +7357,6 @@ function appendTextToRecord(record, text, {review = false, scrollToAppended = fa
     : '';
   const appendedText = heading ? `${heading}\n${text}` : text;
   record.transcription = `${baseText}\n\n${appendedText}`.trim();
-  record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(record.transcription, record.patientData);
   record.saved = false;
   markRecordDirty(record);
   syncRecordCollections(record);
@@ -7508,7 +7499,6 @@ function applyMmseTextToRecord(record, mmseText){
   const editorMatchesTarget = editor?.dataset?.noteId === record.firestoreId && editor?.dataset?.noteOwner === noteOwnerUid(record);
   const existing = editorMatchesTarget && !anonymizeEnabled ? editorPlainText(editor) : record.transcription;
   record.transcription = insertTextIntoHpiSection(existing, mmseText);
-  record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(record.transcription, record.patientData);
   record.saved = false;
   markRecordDirty(record);
   syncRecordCollections(record);
@@ -9158,7 +9148,6 @@ async function saveActiveNote(){
   if (!draft) return;
   const editor = document.getElementById('generatedNoteEditor');
   if (editor && !anonymizeEnabled) draft.transcription = editorPlainText(editor);
-  draft.patientData = shouldLockPatientIdentity(draft) ? lockedPatientDataForRecord(draft) : extractPatientFromNote(draft.transcription, draft.patientData);
   draft.saved = true;
   draft.everSaved = true;
   draft.isDraft = false;
@@ -9307,7 +9296,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=44', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=45', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

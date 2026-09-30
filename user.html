@@ -1807,6 +1807,7 @@
       cursor:pointer;
     }
     .mobile-template-wrap{ display:block; }
+    .mobile-template-wrap[hidden]{ display:none!important; }
     #mobileHomeBtn{
       background:#D7383A;
       border-color:#C8292D;
@@ -4615,6 +4616,7 @@ function showEmptyDate(message = 'No notes saved for this date.'){
   selectedIpTimelineKey = null;
   selectedIpTimelineDate = null;
   updateContinueNoteButton();
+  setMobileTemplateTopVisible(false);
   topbarPatient.classList.remove('visible');
   copyBtn.style.display = 'none';
   hidePrintMenuState();
@@ -4630,6 +4632,7 @@ function showMobileHomeScreen(){
   activeIndex = null;
   clearTimelineSelection();
   updateContinueNoteButton();
+  setMobileTemplateTopVisible(false);
   topbarPatient.classList.remove('visible');
   copyBtn.style.display = 'none';
   hidePrintMenuState();
@@ -4657,6 +4660,7 @@ function setMobileTemplateTopVisible(visible){
   const wrapper = mobileTemplateBtn?.closest('.mobile-template-wrap');
   if (!wrapper) return;
   wrapper.hidden = !visible;
+  wrapper.style.display = visible ? '' : 'none';
   if (!visible){
     mobileTemplateMenu?.classList.remove('open');
     mobileTemplateBtn?.setAttribute('aria-expanded', 'false');
@@ -9252,7 +9256,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=40', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=41', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

@@ -4380,6 +4380,7 @@ function noteFromSnapshot(snapshot, ownerUid = currentUser?.uid){
     transcription:data.transcription || '',
     patientData:data.patientData || {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'},
     voiceDraft:data.voiceDraft === true,
+    hiddenTemplateDraft:data.hiddenTemplateDraft === true,
     visitType:data.visitType === 'IP' || data.visitType === 'OP' ? data.visitType : null,
     admissionDate:data.admissionDate || data.visitDate || null,
     dischargeDate:data.dischargeDate || null,
@@ -5165,7 +5166,7 @@ function outputSectionBodies(text, label){
   const heading = label === 'Medical Certificate' || label === 'Reply Letter'
     ? `${escapeRegExp(label)}(?:\\s*\\([^)]*\\))?`
     : escapeRegExp(label);
-  const pattern = new RegExp(`(?:^|\\n)${heading}:[ \\t]*\\n([\\s\\S]*?)(?=\\n+(?:${NOTE_SECTION_LOOKAHEAD}|Medical Certificate(?:\\s*\\([^)]*\\))?|Reply Letter(?:\\s*\\([^)]*\\))?):|$)`, 'gi');
+  const pattern = new RegExp(`(?:^|\\n)${heading}:[ \\t]*\\n([\\s\\S]*?)(?=\\n+(?:${NOTE_SECTION_LOOKAHEAD}):|$)`, 'gi');
   return Array.from(String(text || '').matchAll(pattern), match => match[1].trim());
 }
 
@@ -6574,11 +6575,17 @@ async function stopAndTranscribe(){
         shouldContinue:() => !draft.cancelProcessing && records.some(record => record.firestoreId === draft.firestoreId)
       }
     );
-    draft.transcription = generated.text;
+    const generatedLabel = normalizedEntryMode(draft);
+    const generatedText = String(generated.text || '').trim();
+    draft.transcription = /^(?:Medical Certificate|Reply Letter)$/i.test(generatedLabel)
+      && !new RegExp(`^${escapeRegExp(generatedLabel)}(?:\\s*\\([^)]*\\))?:`, 'i').test(generatedText)
+      ? `${generatedLabel}:\n${generatedText}`
+      : generated.text;
     draft.patientData = generated.patientData;
-  draft.allergyAlerts = generated.allergyAlerts || [];
+    draft.allergyAlerts = generated.allergyAlerts || [];
     draft.audioBlob = null;
     draft.voiceDraft = false;
+    draft.hiddenTemplateDraft = false;
     draft.kind = 'generated';
     draft.saved = false;
     draft.status = 'Note ready';
@@ -6589,8 +6596,9 @@ async function stopAndTranscribe(){
         ...records[liveIndex],
         transcription:draft.transcription,
         patientData:draft.patientData,
-      allergyAlerts:draft.allergyAlerts || [],
+        allergyAlerts:draft.allergyAlerts || [],
         voiceDraft:false,
+        hiddenTemplateDraft:false,
         kind:'generated',
         saved:false,
         status:'Note ready',
@@ -6598,12 +6606,16 @@ async function stopAndTranscribe(){
       };
       activeIndex = liveIndex;
     }
+    if (/^(?:Medical Certificate|Reply Letter)$/i.test(generatedLabel)){
+      checkedOutputSections.add(`${noteOwnerUid(draft)}:${draft.firestoreId}:${generatedLabel}:0`);
+    }
     draft.progress = 100;
     draft.status = 'Note ready';
     transcriptionReady = true;
     persistRecord(draft,{
       kind:'generated',
       voiceDraft:false,
+      hiddenTemplateDraft:false,
       transcription:draft.transcription,
       patientData:draft.patientData,
       allergyAlerts:draft.allergyAlerts || [],
@@ -6868,8 +6880,7 @@ function openPreparingNewVoiceDock(mode = null){
   renderContinuationDock();
 }
 
-function openNewVoiceDock(){
-  const record = records[activeIndex];
+function openNewVoiceDockForRecord(record){
   if (!record?.voiceDraft) return;
   stopVoiceTimer();
   stopMediaTracks();
@@ -6888,6 +6899,10 @@ function openNewVoiceDock(){
   remainingSeconds = 300;
   placeDock('right');
   renderContinuationDock();
+}
+
+function openNewVoiceDock(){
+  openNewVoiceDockForRecord(records[activeIndex]);
 }
 
 function closeContinuationDock({releaseMic = true, preserveNewDraftCancel = false} = {}){
@@ -6914,17 +6929,18 @@ async function closeVoiceDraftWithConfirmation(){
   }
   if (!window.confirm('Close and delete this draft note?')) return;
   const draft = records.find(record => recordMatchesOwnerAndId(record, continuationState.targetOwnerUid, continuationState.targetId));
+  const keepCurrentView = draft?.hiddenTemplateDraft === true;
   if (!draft?.firestoreId || !currentUser){
     continuationState.cancelNewDraft = true;
     pendingNewVoiceDockId = null;
     closeContinuationDock({preserveNewDraftCancel:true});
-    openHomeForSelectedDate();
+    if (!keepCurrentView) openHomeForSelectedDate();
     return;
   }
   draft.cancelProcessing = true;
   pendingNewVoiceDockId = null;
   closeContinuationDock();
-  openHomeForSelectedDate();
+  if (!keepCurrentView) openHomeForSelectedDate();
   try{
     await persistRecord(draft,{
       deleted:true,
@@ -6934,9 +6950,9 @@ async function closeVoiceDraftWithConfirmation(){
     });
     records = records.filter(record => !recordMatchesOwnerAndId(record, noteOwnerUid(draft), draft.firestoreId));
     allRecords = allRecords.filter(record => !recordMatchesOwnerAndId(record, noteOwnerUid(draft), draft.firestoreId));
-    activeIndex = null;
+    if (!keepCurrentView) activeIndex = null;
     renderEntries();
-    showMobileHomeScreen();
+    if (!keepCurrentView) showMobileHomeScreen();
   }catch(error){
     console.error('Draft delete failed:', error);
     window.alert('Unable to delete this draft. Please try again.');
@@ -7091,10 +7107,16 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   setContinuationStatus('Creating your note...');
   const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, draft.patientData);
   if (!continuationState.open || draft.cancelProcessing) throw new Error('Recording was closed.');
-  draft.transcription = generated.text;
+  const generatedLabel = normalizedEntryMode(draft);
+  const generatedText = String(generated.text || '').trim();
+  draft.transcription = /^(?:Medical Certificate|Reply Letter)$/i.test(generatedLabel)
+    && !new RegExp(`^${escapeRegExp(generatedLabel)}(?:\\s*\\([^)]*\\))?:`, 'i').test(generatedText)
+    ? `${generatedLabel}:\n${generatedText}`
+    : generated.text;
   draft.patientData = generated.patientData;
   draft.allergyAlerts = generated.allergyAlerts || [];
   draft.voiceDraft = false;
+  draft.hiddenTemplateDraft = false;
   draft.kind = 'generated';
   draft.saved = false;
   draft.status = 'Note ready';
@@ -7109,10 +7131,14 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
     records[liveIndex] = applyLocalDirtyRecord({...records[liveIndex], ...draft, transcribing:false});
     activeIndex = liveIndex;
   }
+  if (/^(?:Medical Certificate|Reply Letter)$/i.test(generatedLabel)){
+    checkedOutputSections.add(`${noteOwnerUid(draft)}:${draft.firestoreId}:${generatedLabel}:0`);
+  }
   renderGeneratedNote(records[activeIndex] || draft);
   await persistRecord(draft,{
     kind:'generated',
     voiceDraft:false,
+    hiddenTemplateDraft:false,
     transcription:draft.transcription,
     patientData:draft.patientData,
       allergyAlerts:draft.allergyAlerts || [],
@@ -7940,16 +7966,21 @@ function selectExistingDraftSnapshot(snapshot){
   subscribeToSelectedDate();
 }
 
-function selectLocalDraftFromSnapshot(snapshot){
+function selectLocalDraftFromSnapshot(snapshot, {render = true, keepCurrentView = false} = {}){
   const draft = noteFromSnapshot(snapshot, currentUser.uid);
+  const previousRecord = keepCurrentView && activeIndex !== null ? records[activeIndex] : null;
   records = [
     draft,
     ...records.filter(record => !(record.firestoreId === draft.firestoreId && noteOwnerUid(record) === noteOwnerUid(draft)))
   ];
-  activeIndex = 0;
-  renderEntries();
-  if (draft.voiceDraft) renderVoiceWorkspace();
-  else renderGeneratedNote(draft);
+  if (render){
+    activeIndex = 0;
+    renderEntries();
+    if (draft.voiceDraft) renderVoiceWorkspace();
+    else renderGeneratedNote(draft);
+  }else if (previousRecord){
+    activeIndex = records.findIndex(record => recordMatchesOwnerAndId(record, noteOwnerUid(previousRecord), previousRecord.firestoreId));
+  }
   return draft;
 }
 
@@ -8004,20 +8035,21 @@ async function withDraftCreationLock(task){
   return draftCreationPromise;
 }
 
-async function createVoiceDraft(mode = null){
+async function createVoiceDraft(mode = null, options = {}){
   if (!currentUser) return;
   return withDraftCreationLock(async () => {
     const selectedMode = mode || null;
-    const requestedVisitType = selectedVisitType === 'IP' ? 'IP' : 'OP';
-    const requestedDateString = dateInputValue(selectedVisitDate);
-    const explicitSourceRecord = activeIndex !== null ? records[activeIndex] : selectedOpTimelineRecord();
+    const keepCurrentView = options.keepCurrentView === true;
+    const explicitSourceRecord = options.sourceRecord || (activeIndex !== null ? records[activeIndex] : selectedOpTimelineRecord());
+    const requestedVisitType = keepCurrentView && explicitSourceRecord ? noteVisitType(explicitSourceRecord) : (selectedVisitType === 'IP' ? 'IP' : 'OP');
+    const requestedDateString = keepCurrentView && explicitSourceRecord?.visitDate ? explicitSourceRecord.visitDate : dateInputValue(selectedVisitDate);
     const shouldPrefillPatient = ['Medical certificate','Reply letter'].includes(selectedMode)
       || (window.matchMedia('(max-width:600px)').matches && !selectedMode && explicitSourceRecord);
     const sourceRecord = shouldPrefillPatient ? explicitSourceRecord : null;
     const sourcePatientData = sourceRecord ? patientDataWithFallback(patientIdentity(sourceRecord)) : {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'};
     const sourceKey = sourceRecord && !sourceRecord.voiceDraft ? patientSearchKey(sourceRecord) : null;
     openPreparingNewVoiceDock(selectedMode);
-    if (searchScope === 'all'){
+    if (searchScope === 'all' && !keepCurrentView){
       searchScope = 'today';
       selectedTimelineKey = null;
       updateSearchScopeToggle();
@@ -8047,19 +8079,22 @@ async function createVoiceDraft(mode = null){
 	        status: 'Ready to record',
 	        transcription:'',
 	        patientData:sourcePatientData,
-	        sourcePatientKey:sourceKey
+	        sourcePatientKey:sourceKey,
+        sourceNoteId:sourceRecord?.firestoreId || null,
+        carriedForwardFrom:sourceRecord?.firestoreId || null,
+        hiddenTemplateDraft:keepCurrentView && ['Medical certificate','Reply letter'].includes(selectedMode)
 	      };
       if (continuationState.cancelNewDraft){
         continuationState.cancelNewDraft = false;
         pendingNewVoiceDockId = null;
         return;
       }
-      pendingSelectId = newDraftRef.id;
+      pendingSelectId = keepCurrentView ? null : newDraftRef.id;
       pendingNewVoiceDockId = newDraftRef.id;
-      clearTimelineSelection();
+      if (!keepCurrentView) clearTimelineSelection();
       remainingSeconds = 300;
-      selectLocalDraftFromSnapshot({id:newDraftRef.id,data:()=>draftData});
-      openNewVoiceDock();
+      const localDraft = selectLocalDraftFromSnapshot({id:newDraftRef.id,data:()=>draftData}, {render:!keepCurrentView, keepCurrentView});
+      openNewVoiceDockForRecord(localDraft);
       setDoc(newDraftRef,{...draftData,createdAt:serverTimestamp()},{merge:true}).catch(error => {
         console.error('Voice draft save failed:', error);
         if (continuationState.targetId === newDraftRef.id && continuationState.targetOwnerUid === currentUser.uid){
@@ -8431,7 +8466,11 @@ function handleDocumentModeAction(mode){
     if (continuationState.open && continuationState.mode === 'new') renderContinuationDock();
     return;
   }
-  if (selectedRecordCanContinue() && openDocumentAppendDock(mode)) return;
+  const sourceRecord = currentEditableRecord() || opTimelineWorkingRecord();
+  if (selectedRecordCanContinue() && sourceRecord){
+    createVoiceDraft(mode, {sourceRecord, keepCurrentView:true});
+    return;
+  }
   createVoiceDraft(mode);
 }
 
@@ -9127,7 +9166,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=34', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=35', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

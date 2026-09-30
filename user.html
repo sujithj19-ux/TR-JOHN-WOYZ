@@ -3741,15 +3741,17 @@ function renderPatientTimeline(key){
   deleteBtn.classList.remove('visible');
   dischargeBtn.classList.remove('visible');
   setMobileBottomActionsVisible(false);
-  const renderedNotes = timelineRecords.map(record => {
+  const renderedNotes = timelineRecords.flatMap(record => {
+    if (isEmptyCarriedReview(record)) return [];
     const displayText = anonymizeTextForRecord(displayNoteTextForRecord(record, record.transcription || ''), record);
-    return `
+    if (!String(displayText || '').trim()) return [];
+    return [`
       <article class="timeline-entry">
         <h2 class="timeline-entry-title">${escapeHtml(timelineTitleForRecord(record))}</h2>
         <div class="timeline-note">${clinicalNoteHtml(displayText, record)}</div>
         ${noteTimeHtml(record)}
       </article>
-    `;
+    `];
   }).join('');
   mainScroll.innerHTML = `
     <div class="timeline-wrap">
@@ -3811,6 +3813,7 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
   setMobileBottomActionsVisible(true);
   const feeRecordIds = latestVisitRecordKeys(timelineRecords);
   const renderedNotes = timelineRecords.flatMap(record => {
+    if (isEmptyCarriedReview(record)) return [];
     const displayText = documentEntryDisplayText(record, displayNoteTextForRecord(record, record.transcription || ''));
     const isDocumentEntry = /^(?:Medical Certificate|Reply Letter)$/i.test(normalizedEntryMode(record));
     const baseText = isDocumentEntry ? displayText : stripDocumentTimelineEntries(displayText);
@@ -4081,6 +4084,7 @@ async function addTimelinePatientToToday(sourceRecord){
     transcription,
     patientData,
     sourcePatientKey:sourceKey,
+    rootPatientKey:sourceKey,
     sourceNoteId:sourceRecord.firestoreId || null,
     carriedForwardFrom:sourceRecord.firestoreId || null,
     sourceOwnerUid:noteOwnerUid(sourceRecord)
@@ -9323,7 +9327,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=46', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=47', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

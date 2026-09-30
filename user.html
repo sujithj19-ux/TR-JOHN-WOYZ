@@ -8819,17 +8819,22 @@ emailRxBtn.addEventListener('click', () => openEmailDialog('prescription'));
 emailVisitBtn.addEventListener('click', () => openEmailDialog('visit'));
 emailCloseBtn.addEventListener('click', closeEmailDialog);
 emailCancelBtn.addEventListener('click', closeEmailDialog);
-document.getElementById('emailPreviewBtn').addEventListener('click', () => {
+function openEmailPreview(){
   try{
-    const payload = buildEmailPayload(emailRecipientInput.value.trim(), 'prescription');
+    const payload = buildEmailPayload(emailRecipientInput.value.trim(), pendingEmailMode);
+    const selected = pendingEmailMode === 'prescription' ? currentSelectedPrintableOutput() : {};
+    const previewKind = selected.documentLabel || (pendingEmailMode === 'prescription' ? 'Prescription' : 'Visit Note');
+    document.getElementById('emailPreviewTitle').textContent = `${previewKind} preview`;
     document.getElementById('emailPreviewDetails').textContent = `Subject: ${payload.title}`;
     const frame = document.getElementById('emailPreviewFrame');
+    frame.title = `${previewKind} attachment preview`;
     frame.onload = fitEmailPreviewPaper;
     frame.srcdoc = payload.printHtml.replace('</head>', '<style>html{width:210mm;min-height:297mm;background:white;}body{width:194mm;margin:8mm;} .page{min-height:281mm;}</style></head>');
     document.getElementById('emailPreviewModal').classList.add('open');
     requestAnimationFrame(fitEmailPreviewPaper);
   }catch(error){ setEmailStatus(error.message, 'error'); }
-});
+}
+document.getElementById('emailPreviewBtn').addEventListener('click', openEmailPreview);
 document.getElementById('emailPreviewCloseBtn').addEventListener('click', () => document.getElementById('emailPreviewModal').classList.remove('open'));
 emailSendBtn.addEventListener('click', sendCurrentNoteEmail);
 emailModal.addEventListener('click', event => { if (event.target === emailModal) closeEmailDialog(); });
@@ -9224,7 +9229,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=38', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=39', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

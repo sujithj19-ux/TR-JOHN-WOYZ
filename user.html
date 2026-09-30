@@ -4636,8 +4636,20 @@ function showMobileHomeScreen(){
       <div class="empty-sub">Please select template to create a new note</div>
       <div class="home-tool-actions" aria-label="Homepage tools">
         <button class="home-tool-btn primary" type="button" data-home-voice-mode="Visit Note">Visit Note</button>
+        <button class="home-tool-btn" type="button" data-home-voice-mode="Medical certificate">Certificate</button>
+        <button class="home-tool-btn" type="button" data-home-voice-mode="Reply letter">Reply Letter</button>
       </div>
     </div>`;
+}
+
+function setMobileTemplateTopVisible(visible){
+  const wrapper = mobileTemplateBtn?.closest('.mobile-template-wrap');
+  if (!wrapper) return;
+  wrapper.hidden = !visible;
+  if (!visible){
+    mobileTemplateMenu?.classList.remove('open');
+    mobileTemplateBtn?.setAttribute('aria-expanded', 'false');
+  }
 }
 
 function updateContinueNoteButton(){
@@ -4648,6 +4660,7 @@ function updateContinueNoteButton(){
   topbarContinueBtn.disabled = !canContinue || continuationState.hasStarted || continuationState.processing;
   topbarContinueBtn.classList.toggle('inactive', !canContinue);
   const hasTemplateContext = activeIndex !== null || Boolean(selectedOpTimelineKey) || Boolean(selectedIpTimelineKey);
+  setMobileTemplateTopVisible(Boolean(currentUser) && hasTemplateContext);
   topbarDocActions.classList.toggle('visible', Boolean(currentUser) && hasTemplateContext);
   if (!hasTemplateContext){
     templateMenu.classList.remove('open');
@@ -9200,7 +9213,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=36', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=37', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

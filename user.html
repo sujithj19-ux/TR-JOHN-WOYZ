@@ -3473,6 +3473,17 @@ function stripDocumentTimelineEntries(text){
   return String(text || '').replace(pattern, '').trim();
 }
 
+
+function documentEntryDisplayText(record, text){
+  const label = normalizedEntryMode(record);
+  const body = String(text || '').trim();
+  if (!/^(?:Medical Certificate|Reply Letter)$/i.test(label) || !body) return body;
+  return new RegExp(`^${escapeRegExp(label)}(?:\s*\([^)]*\))?:`, 'i').test(body)
+    ? body
+    : `${label}:
+${body}`;
+}
+
 function opTimelineVisibleEntryCount(recordsForTimeline){
   return recordsForTimeline.reduce((total, record) => total + 1 + reviewNoteTimelineEntriesForRecord(record).length + documentTimelineEntriesForRecord(record).length, 0);
 }
@@ -3754,7 +3765,7 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
   setMobileBottomActionsVisible(true);
   const feeRecordIds = latestVisitRecordKeys(timelineRecords);
   const renderedNotes = timelineRecords.flatMap(record => {
-    const displayText = displayNoteTextForRecord(record, record.transcription || '');
+    const displayText = documentEntryDisplayText(record, displayNoteTextForRecord(record, record.transcription || ''));
     const isDocumentEntry = /^(?:Medical Certificate|Reply Letter)$/i.test(normalizedEntryMode(record));
     const baseText = isDocumentEntry ? displayText : stripDocumentTimelineEntries(displayText);
     const entries = [];
@@ -6392,7 +6403,7 @@ function renderGeneratedNote(draft){
   setMobileBottomActionsVisible(true);
   const title = draft.selectedMode || 'Visit Note';
   const hideEmptyReview = isEmptyCarriedReview(draft);
-  const displayText = anonymizeTextForRecord(displayNoteTextForRecord(draft, draft.transcription), draft);
+  const displayText = anonymizeTextForRecord(documentEntryDisplayText(draft, displayNoteTextForRecord(draft, draft.transcription)), draft);
   const canEdit = !anonymizeEnabled;
   const sameVisitRecords = allRecords.filter(record => !record.isDeleted && noteOwnerUid(record) === noteOwnerUid(draft) && patientSearchKey(record) === patientSearchKey(draft) && record.visitDate === draft.visitDate && noteVisitType(record) === 'OP');
   const showFeeInput = latestVisitRecordKeys(sameVisitRecords.length ? sameVisitRecords : [draft]).has(draft.firestoreId);
@@ -9213,7 +9224,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=37', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=38', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

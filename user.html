@@ -3217,20 +3217,43 @@ function renderOpPatientEntries(){
 renderEntries();
 
 function patientSearchKey(record){
-  const identity = patientIdentity(record);
+  const linkedSource = sourceRecordForPatientKey(record);
+  if (linkedSource) return basePatientSearchKey(linkedSource) || record?.sourcePatientKey || '';
   if (record?.sourcePatientKey) return record.sourcePatientKey;
+  return basePatientSearchKey(record);
+}
+
+function sourceRecordForPatientKey(record){
+  const sourceId = record?.sourceNoteId || record?.carriedForwardFrom;
+  if (!sourceId || !record?.firestoreId || sourceId === record.firestoreId) return null;
+  const owner = noteOwnerUid(record);
+  return [...allRecords, ...records].find(candidate =>
+    candidate && !candidate.isDeleted && candidate.firestoreId === sourceId && noteOwnerUid(candidate) === owner
+  ) || null;
+}
+
+function basePatientSearchKey(record){
+  const identity = patientIdentity(record);
   const legacy = normalizePatientToken(identity.uhid);
   if (legacy && legacy !== 'nil') return `uhid:${legacy}`;
   const mobile = String(identity.mobile || '').replace(/\D/g, '');
-  if (mobile) return `mobile:${mobile}|name:${normalizePatientToken(identity.name)}|sex:${normalizePatientToken(identity.sex)}`;
+  if (mobile) return `mobile:${mobile}|name:${normalizePatientToken(identity.name)}|sex:${normalizePatientSexToken(identity.sex)}`;
   const name = normalizePatientToken(identity.name || record?.name);
-  const sex = normalizePatientToken(identity.sex);
+  const sex = normalizePatientSexToken(identity.sex);
   const age = normalizePatientToken(identity.age);
   return `name:${name}|sex:${sex}|age:${age}`;
 }
 
 function normalizePatientToken(value){
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizePatientSexToken(value){
+  const token = normalizePatientToken(value);
+  if (/^(m|male)$/i.test(token)) return 'male';
+  if (/^(f|female)$/i.test(token)) return 'female';
+  if (/^(o|other)$/i.test(token)) return 'other';
+  return token;
 }
 
 function sortRecordsNewestFirst(items){
@@ -9256,7 +9279,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=41', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=42', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

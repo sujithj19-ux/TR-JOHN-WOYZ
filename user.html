@@ -3225,17 +3225,38 @@ function patientSearchKey(record){
 
 function sourceRecordForPatientKey(record){
   const sourceId = record?.sourceNoteId || record?.carriedForwardFrom;
-  if (!sourceId || !record?.firestoreId || sourceId === record.firestoreId) return null;
+  if (!sourceId || sourceId === record?.firestoreId) return null;
   const owner = noteOwnerUid(record);
   return [...allRecords, ...records].find(candidate =>
     candidate && !candidate.isDeleted && candidate.firestoreId === sourceId && noteOwnerUid(candidate) === owner
   ) || null;
 }
 
+function rootPatientSourceRecord(record){
+  let current = record;
+  const seen = new Set();
+  for (let depth = 0; depth < 20; depth += 1){
+    const next = sourceRecordForPatientKey(current);
+    if (!next?.firestoreId || seen.has(`${noteOwnerUid(next)}:${next.firestoreId}`)) break;
+    seen.add(`${noteOwnerUid(next)}:${next.firestoreId}`);
+    current = next;
+  }
+  return current && current !== record ? current : null;
+}
+
+function lockedPatientDataForRecord(record, fallback = null){
+  const source = rootPatientSourceRecord(record);
+  return patientDataWithFallback(patientIdentity(source || record || {}), fallback || record?.patientData || {});
+}
+
+function shouldLockPatientIdentity(record){
+  return Boolean(record?.sourcePatientKey || record?.sourceNoteId || record?.carriedForwardFrom);
+}
+
 function basePatientSearchKey(record){
   const identity = patientIdentity(record);
   const mobile = String(identity.mobile || '').replace(/\D/g, '');
-  if (mobile) return `mobile:${mobile}`;
+  if (mobile) return `mobile:${mobile}|name:${normalizePatientToken(identity.name)}|sex:${normalizePatientSexToken(identity.sex)}`;
   const legacy = normalizePatientToken(identity.uhid);
   if (legacy && legacy !== 'nil') return `uhid:${legacy}`;
   const name = normalizePatientToken(identity.name || record?.name);
@@ -4258,7 +4279,7 @@ function patientDataChanged(previous = {}, next = {}){
 
 function refreshActivePatientIdentityFromText(record, text, {immediate = false} = {}){
   if (!record || record.voiceDraft || record.transcribing) return;
-  const nextPatientData = extractPatientFromNote(text, record.patientData);
+  const nextPatientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(text, record.patientData);
   if (!patientDataChanged(record.patientData, nextPatientData)) return;
   record.patientData = nextPatientData;
   markRecordDirty(record);
@@ -4317,7 +4338,7 @@ function updateOpAllEntryRecordFromEditor(editor){
   const text = editorPlainText(editor);
   if (text !== (record.transcription || '')){
     record.transcription = text;
-    record.patientData = extractPatientFromNote(text, record.patientData);
+    record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(text, record.patientData);
     record.saved = false;
     markRecordDirty(record);
     syncRecordCollections(record);
@@ -4746,7 +4767,7 @@ async function saveOpAllEntries(){
   const uniqueRecords = Array.from(new Map(recordsToSave.map(record => [recordLocalKey(record), record])).values());
   if (!uniqueRecords.length) return true;
   await Promise.all(uniqueRecords.map(async record => {
-    record.patientData = extractPatientFromNote(record.transcription, record.patientData);
+    record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(record.transcription, record.patientData);
     record.saved = true;
     record.everSaved = true;
     record.isDraft = false;
@@ -6653,8 +6674,9 @@ async function stopAndTranscribe(){
       const processingStatus = document.getElementById('processingStatus');
       if (processingStatus) processingStatus.textContent = message;
     };
+    const trustedPatientData = lockedPatientDataForRecord(draft);
     const generated = await runUntilGenerated(
-      onRetry => sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry, draft.visitType || selectedVisitType, draft.patientData),
+      onRetry => sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry, draft.visitType || selectedVisitType, trustedPatientData),
       {
         setStatus:updateProcessingStatus,
         shouldContinue:() => !draft.cancelProcessing && records.some(record => record.firestoreId === draft.firestoreId)
@@ -6666,7 +6688,7 @@ async function stopAndTranscribe(){
       && !new RegExp(`^${escapeRegExp(generatedLabel)}(?:\\s*\\([^)]*\\))?:`, 'i').test(generatedText)
       ? `${generatedLabel}:\n${generatedText}`
       : generated.text;
-    draft.patientData = generated.patientData;
+    draft.patientData = shouldLockPatientIdentity(draft) ? trustedPatientData : generated.patientData;
     draft.allergyAlerts = generated.allergyAlerts || [];
     draft.audioBlob = null;
     draft.voiceDraft = false;
@@ -7190,7 +7212,8 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   activeIndex = targetIndex;
   const draft = records[targetIndex];
   setContinuationStatus('Creating your note...');
-  const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, draft.patientData);
+  const trustedPatientData = lockedPatientDataForRecord(draft);
+  const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, trustedPatientData);
   if (!continuationState.open || draft.cancelProcessing) throw new Error('Recording was closed.');
   const generatedLabel = normalizedEntryMode(draft);
   const generatedText = String(generated.text || '').trim();
@@ -7198,7 +7221,7 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
     && !new RegExp(`^${escapeRegExp(generatedLabel)}(?:\\s*\\([^)]*\\))?:`, 'i').test(generatedText)
     ? `${generatedLabel}:\n${generatedText}`
     : generated.text;
-  draft.patientData = generated.patientData;
+  draft.patientData = shouldLockPatientIdentity(draft) ? lockedPatientDataForRecord(draft, generated.patientData) : generated.patientData;
   draft.allergyAlerts = generated.allergyAlerts || [];
   draft.voiceDraft = false;
   draft.hiddenTemplateDraft = false;
@@ -7240,6 +7263,7 @@ async function appendContinuationText(addition){
   if (!text) throw new Error('No review text was returned. Please retry.');
   captureActiveEditorState();
   const source = continuationTargetRecord();
+  const patientSource = rootPatientSourceRecord(source) || source;
   if (!source || noteOwnerUid(source) !== currentUser?.uid) throw new Error('Select your patient before creating a review note.');
   const now = new Date();
   const today = dateInputValue(now);
@@ -7257,10 +7281,10 @@ async function appendContinuationText(addition){
     createdAtLabel:now.toLocaleString('en-GB'),
     transcription:text,
     allergyAlerts:continuationState.generatedAllergyAlerts || [],
-    patientData:patientDataWithFallback(patientIdentity(source)),
-    sourcePatientKey:source.sourcePatientKey || patientSearchKey(source),
-    sourceNoteId:reusePlaceholder ? source.sourceNoteId : source.firestoreId,
-    carriedForwardFrom:reusePlaceholder ? source.sourceNoteId : source.firestoreId,
+    patientData:lockedPatientDataForRecord(patientSource),
+    sourcePatientKey:patientSearchKey(patientSource),
+    sourceNoteId:reusePlaceholder ? (source.sourceNoteId || patientSource.firestoreId) : patientSource.firestoreId,
+    carriedForwardFrom:reusePlaceholder ? (source.sourceNoteId || patientSource.firestoreId) : patientSource.firestoreId,
     status:'Note ready', updatedAt:serverTimestamp()
   };
   await setDoc(noteRef, data, {merge:true});
@@ -7289,6 +7313,7 @@ async function appendDocumentText(generatedText, mode){
   const text = String(generatedText || '').trim();
   if (!text) return;
   const source = continuationTargetRecord();
+  const patientSource = rootPatientSourceRecord(source) || source;
   if (!source || noteOwnerUid(source) !== currentUser?.uid) throw new Error('Select your patient before creating this document.');
   const label = mode === 'Medical certificate' ? 'Medical Certificate' : 'Reply Letter';
   const now = new Date();
@@ -7308,10 +7333,10 @@ async function appendDocumentText(generatedText, mode){
     createdAt:serverTimestamp(),
     createdAtLabel:now.toLocaleString('en-GB'),
     transcription:`${label} (${reviewTimestampLabel()}):\n${text}`,
-    patientData:patientDataWithFallback(patientIdentity(source)),
-    sourcePatientKey:source.sourcePatientKey || patientSearchKey(source),
-    sourceNoteId:source.firestoreId || null,
-    carriedForwardFrom:source.firestoreId || null,
+    patientData:lockedPatientDataForRecord(patientSource),
+    sourcePatientKey:patientSearchKey(patientSource),
+    sourceNoteId:patientSource.firestoreId || null,
+    carriedForwardFrom:patientSource.firestoreId || null,
     status:'Note ready',
     updatedAt:serverTimestamp()
   };
@@ -7340,7 +7365,7 @@ function appendTextToRecord(record, text, {review = false, scrollToAppended = fa
     : '';
   const appendedText = heading ? `${heading}\n${text}` : text;
   record.transcription = `${baseText}\n\n${appendedText}`.trim();
-  record.patientData = extractPatientFromNote(record.transcription, record.patientData);
+  record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(record.transcription, record.patientData);
   record.saved = false;
   markRecordDirty(record);
   syncRecordCollections(record);
@@ -7483,7 +7508,7 @@ function applyMmseTextToRecord(record, mmseText){
   const editorMatchesTarget = editor?.dataset?.noteId === record.firestoreId && editor?.dataset?.noteOwner === noteOwnerUid(record);
   const existing = editorMatchesTarget && !anonymizeEnabled ? editorPlainText(editor) : record.transcription;
   record.transcription = insertTextIntoHpiSection(existing, mmseText);
-  record.patientData = extractPatientFromNote(record.transcription, record.patientData);
+  record.patientData = shouldLockPatientIdentity(record) ? lockedPatientDataForRecord(record) : extractPatientFromNote(record.transcription, record.patientData);
   record.saved = false;
   markRecordDirty(record);
   syncRecordCollections(record);
@@ -8156,8 +8181,8 @@ async function createVoiceDraft(mode = null, options = {}){
     const requestedDateString = keepCurrentView && explicitSourceRecord?.visitDate ? explicitSourceRecord.visitDate : dateInputValue(selectedVisitDate);
     const shouldPrefillPatient = ['Medical certificate','Reply letter'].includes(selectedMode)
       || (window.matchMedia('(max-width:600px)').matches && !selectedMode && explicitSourceRecord);
-    const sourceRecord = shouldPrefillPatient ? explicitSourceRecord : null;
-    const sourcePatientData = sourceRecord ? patientDataWithFallback(patientIdentity(sourceRecord)) : {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'};
+    const sourceRecord = shouldPrefillPatient && explicitSourceRecord ? (rootPatientSourceRecord(explicitSourceRecord) || explicitSourceRecord) : null;
+    const sourcePatientData = sourceRecord ? lockedPatientDataForRecord(sourceRecord) : {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'};
     const sourceKey = sourceRecord && !sourceRecord.voiceDraft ? patientSearchKey(sourceRecord) : null;
     openPreparingNewVoiceDock(selectedMode);
     if (searchScope === 'all' && !keepCurrentView){
@@ -9133,7 +9158,7 @@ async function saveActiveNote(){
   if (!draft) return;
   const editor = document.getElementById('generatedNoteEditor');
   if (editor && !anonymizeEnabled) draft.transcription = editorPlainText(editor);
-  draft.patientData = extractPatientFromNote(draft.transcription, draft.patientData);
+  draft.patientData = shouldLockPatientIdentity(draft) ? lockedPatientDataForRecord(draft) : extractPatientFromNote(draft.transcription, draft.patientData);
   draft.saved = true;
   draft.everSaved = true;
   draft.isDraft = false;
@@ -9282,7 +9307,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=43', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=44', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

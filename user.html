@@ -4647,7 +4647,12 @@ function updateContinueNoteButton(){
   continueNoteBtn.classList.toggle('visible', canContinue);
   topbarContinueBtn.disabled = !canContinue || continuationState.hasStarted || continuationState.processing;
   topbarContinueBtn.classList.toggle('inactive', !canContinue);
-  topbarDocActions.classList.toggle('visible', Boolean(currentUser));
+  const hasTemplateContext = activeIndex !== null || Boolean(selectedOpTimelineKey) || Boolean(selectedIpTimelineKey);
+  topbarDocActions.classList.toggle('visible', Boolean(currentUser) && hasTemplateContext);
+  if (!hasTemplateContext){
+    templateMenu.classList.remove('open');
+    templateBtn.setAttribute('aria-expanded', 'false');
+  }
   topbarDocActions.querySelectorAll('[data-topbar-voice-mode]').forEach(button => {
     button.classList.toggle('active', showVoiceModes && record?.selectedMode === button.dataset.topbarVoiceMode);
     button.disabled = continuationState.hasStarted || continuationState.processing;
@@ -5170,6 +5175,20 @@ function outputSectionBodies(text, label){
   return Array.from(String(text || '').matchAll(pattern), match => match[1].trim());
 }
 
+function isDocumentOutputSection(label){
+  return /^(?:Medical Certificate|Reply Letter)$/i.test(String(label || ''));
+}
+
+function syncOutputSectionLocks(){
+  const checkboxes = [...mainScroll.querySelectorAll('[data-output-section]')];
+  const checkedDocument = checkboxes.find(checkbox => checkbox.checked && isDocumentOutputSection(checkbox.dataset.outputSection));
+  const checkedClinical = checkboxes.some(checkbox => checkbox.checked && !isDocumentOutputSection(checkbox.dataset.outputSection));
+  checkboxes.forEach(checkbox => {
+    const isDocument = isDocumentOutputSection(checkbox.dataset.outputSection);
+    checkbox.disabled = Boolean((checkedDocument && !checkbox.checked) || (checkedClinical && isDocument && !checkbox.checked));
+  });
+}
+
 function selectedPatientOutput(){
   const rx = [], advice = [], documents = [];
   let record = null;
@@ -5182,24 +5201,39 @@ function selectedPatientOutput(){
     const body = outputSectionBodies(text, checkbox.dataset.outputSection)[Number(checkbox.dataset.outputIndex)];
     if (!body || isNilLike(body)) continue;
     record ||= candidate;
-    if (checkbox.dataset.outputSection === 'Prescription') rx.push(body);
+    if (isDocumentOutputSection(checkbox.dataset.outputSection)) documents.push({label:checkbox.dataset.outputSection, body});
+    else if (checkbox.dataset.outputSection === 'Prescription') rx.push(body);
     else if (checkbox.dataset.outputSection === 'Treatment Plan') advice.push(body);
-    else documents.push({label:checkbox.dataset.outputSection, body});
+  }
+  if (documents.length){
+    const documentText = `${documents[0].label}:\n${documents[0].body}`;
+    return {record, prescription:'', treatmentPlan:'', documentLabel:documents[0].label, documentText, sourceText:documentText};
   }
   const prescription = rx.join('\n\n');
   const treatmentPlan = advice.join('\n\n');
-  const documentText = documents.map(item => `${item.label}:\n${item.body}`).join('\n\n');
-  return {record, prescription, treatmentPlan, documentLabel:documents[0]?.label || '', documentText, sourceText:[prescription ? `Prescription:\n${prescription}` : '', treatmentPlan ? `Treatment Plan:\n${treatmentPlan}` : '', documentText].filter(Boolean).join('\n\n')};
+  return {record, prescription, treatmentPlan, documentLabel:'', documentText:'', sourceText:[prescription ? `Prescription:\n${prescription}` : '', treatmentPlan ? `Treatment Plan:\n${treatmentPlan}` : ''].filter(Boolean).join('\n\n')};
 }
 
 mainScroll.addEventListener('change', event => {
   const checkbox = event.target.closest('[data-output-section]');
   if (!checkbox) return;
-  if (checkbox.checked) checkedOutputSections.add(checkbox.dataset.outputKey);
-  else checkedOutputSections.delete(checkbox.dataset.outputKey);
+  const isDocument = isDocumentOutputSection(checkbox.dataset.outputSection);
+  if (checkbox.checked){
+    mainScroll.querySelectorAll('[data-output-section]:checked').forEach(other => {
+      if (other === checkbox) return;
+      if (isDocument || isDocumentOutputSection(other.dataset.outputSection)){
+        other.checked = false;
+        checkedOutputSections.delete(other.dataset.outputKey);
+      }
+    });
+    checkedOutputSections.add(checkbox.dataset.outputKey);
+  }else{
+    checkedOutputSections.delete(checkbox.dataset.outputKey);
+  }
+  syncOutputSectionLocks();
   updatePrescriptionPrintButton();
 });
-new MutationObserver(() => { updatePrescriptionPrintButton(); syncRecorderPageLock(); refreshAllergyWarnings(); }).observe(mainScroll, {childList:true, subtree:true});
+new MutationObserver(() => { syncOutputSectionLocks(); updatePrescriptionPrintButton(); syncRecorderPageLock(); refreshAllergyWarnings(); }).observe(mainScroll, {childList:true, subtree:true});
 
 function patientFieldsHtml(record){
   const identity = patientIdentity(record);
@@ -9166,7 +9200,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=35', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=36', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

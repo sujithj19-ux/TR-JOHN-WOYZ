@@ -3217,8 +3217,9 @@ function renderOpPatientEntries(){
 renderEntries();
 
 function patientSearchKey(record){
+  if (record?.rootPatientKey) return record.rootPatientKey;
   const linkedSource = sourceRecordForPatientKey(record);
-  if (linkedSource) return basePatientSearchKey(linkedSource) || record?.sourcePatientKey || '';
+  if (linkedSource) return linkedSource.rootPatientKey || basePatientSearchKey(linkedSource) || record?.sourcePatientKey || '';
   if (record?.sourcePatientKey) return record.sourcePatientKey;
   return basePatientSearchKey(record);
 }
@@ -4408,12 +4409,14 @@ function normalizeCarryForwardContinuation(record){
     heading:record.isDraft ? 'Review Note draft' : 'Review Note',
     selectedMode:'Review Note',
     transcription:reviewText,
-    carriedForwardFrom:record.carriedForwardFrom || record.sourceNoteId
+    carriedForwardFrom:record.carriedForwardFrom || record.sourceNoteId,
+    rootPatientKey:record.rootPatientKey || record.sourcePatientKey || ''
   };
 }
 
 function noteFromSnapshot(snapshot, ownerUid = currentUser?.uid){
   const data = snapshot.data();
+  const finalizedGenerated = data.voiceDraft !== true && data.kind === 'generated' && Boolean(String(data.transcription || '').trim());
   return normalizeCarryForwardContinuation({
     ...data,
     firestoreId:snapshot.id,
@@ -4425,9 +4428,15 @@ function noteFromSnapshot(snapshot, ownerUid = currentUser?.uid){
     age:data.patientData?.age || 'NIL',
     sex:data.patientData?.sex || 'NIL',
     createdAt:data.createdAtLabel || '',
-    isDraft:data.isDraft === true,
+    isDraft:data.isDraft === true && !finalizedGenerated,
+    saved:finalizedGenerated ? true : data.saved === true,
+    everSaved:finalizedGenerated ? true : data.everSaved === true,
     transcription:data.transcription || '',
     patientData:data.patientData || {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'},
+    rootPatientKey:data.rootPatientKey || data.sourcePatientKey || '',
+    sourcePatientKey:data.sourcePatientKey || '',
+    sourceNoteId:data.sourceNoteId || null,
+    carriedForwardFrom:data.carriedForwardFrom || null,
     voiceDraft:data.voiceDraft === true,
     hiddenTemplateDraft:data.hiddenTemplateDraft === true,
     visitType:data.visitType === 'IP' || data.visitType === 'OP' ? data.visitType : null,
@@ -6685,8 +6694,10 @@ async function stopAndTranscribe(){
     draft.audioBlob = null;
     draft.voiceDraft = false;
     draft.hiddenTemplateDraft = false;
+    draft.isDraft = false;
+    draft.everSaved = true;
     draft.kind = 'generated';
-    draft.saved = false;
+    draft.saved = true;
     draft.status = 'Note ready';
     markRecordDirty(draft,{generated:true});
     const liveIndex = records.findIndex(record => recordLocalKey(record) === draftKey);
@@ -6698,8 +6709,10 @@ async function stopAndTranscribe(){
         allergyAlerts:draft.allergyAlerts || [],
         voiceDraft:false,
         hiddenTemplateDraft:false,
+        isDraft:false,
+        everSaved:true,
         kind:'generated',
-        saved:false,
+        saved:true,
         status:'Note ready',
         transcribing:false
       };
@@ -6715,8 +6728,12 @@ async function stopAndTranscribe(){
       kind:'generated',
       voiceDraft:false,
       hiddenTemplateDraft:false,
+      isDraft:false,
+      saved:true,
+      everSaved:true,
       transcription:draft.transcription,
       patientData:draft.patientData,
+      rootPatientKey:draft.rootPatientKey || draft.sourcePatientKey || patientSearchKey(draft),
       allergyAlerts:draft.allergyAlerts || [],
       selectedMode:draft.selectedMode,
       visitType:draft.visitType || selectedVisitType,
@@ -7217,8 +7234,10 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   draft.allergyAlerts = generated.allergyAlerts || [];
   draft.voiceDraft = false;
   draft.hiddenTemplateDraft = false;
+  draft.isDraft = false;
+  draft.everSaved = true;
   draft.kind = 'generated';
-  draft.saved = false;
+  draft.saved = true;
   draft.status = 'Note ready';
   markRecordDirty(draft,{generated:true});
   const draftVisitType = draft.visitType || selectedVisitType;
@@ -7239,8 +7258,12 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
     kind:'generated',
     voiceDraft:false,
     hiddenTemplateDraft:false,
+    isDraft:false,
+    saved:true,
+    everSaved:true,
     transcription:draft.transcription,
     patientData:draft.patientData,
+      rootPatientKey:draft.rootPatientKey || draft.sourcePatientKey || patientSearchKey(draft),
       allergyAlerts:draft.allergyAlerts || [],
     selectedMode:draft.selectedMode,
     visitType:draftVisitType,
@@ -7275,6 +7298,7 @@ async function appendContinuationText(addition){
     allergyAlerts:continuationState.generatedAllergyAlerts || [],
     patientData:lockedPatientDataForRecord(patientSource),
     sourcePatientKey:patientSearchKey(patientSource),
+    rootPatientKey:patientSearchKey(patientSource),
     sourceNoteId:reusePlaceholder ? (source.sourceNoteId || patientSource.firestoreId) : patientSource.firestoreId,
     carriedForwardFrom:reusePlaceholder ? (source.sourceNoteId || patientSource.firestoreId) : patientSource.firestoreId,
     status:'Note ready', updatedAt:serverTimestamp()
@@ -7327,6 +7351,7 @@ async function appendDocumentText(generatedText, mode){
     transcription:`${label} (${reviewTimestampLabel()}):\n${text}`,
     patientData:lockedPatientDataForRecord(patientSource),
     sourcePatientKey:patientSearchKey(patientSource),
+    rootPatientKey:patientSearchKey(patientSource),
     sourceNoteId:patientSource.firestoreId || null,
     carriedForwardFrom:patientSource.firestoreId || null,
     status:'Note ready',
@@ -8206,6 +8231,7 @@ async function createVoiceDraft(mode = null, options = {}){
 	        transcription:'',
 	        patientData:sourcePatientData,
 	        sourcePatientKey:sourceKey,
+        rootPatientKey:sourceKey || '',
         sourceNoteId:sourceRecord?.firestoreId || null,
         carriedForwardFrom:sourceRecord?.firestoreId || null,
         hiddenTemplateDraft:keepCurrentView && ['Medical certificate','Reply letter'].includes(selectedMode)
@@ -9172,6 +9198,7 @@ async function saveActiveNote(){
     everSaved:true,
     transcription:draft.transcription,
     patientData:draft.patientData,
+      rootPatientKey:draft.rootPatientKey || draft.sourcePatientKey || patientSearchKey(draft),
       allergyAlerts:draft.allergyAlerts || [],
     selectedMode:draft.selectedMode,
     visitDate:persistedVisitDate,
@@ -9296,7 +9323,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=45', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=46', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

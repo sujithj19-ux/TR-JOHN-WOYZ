@@ -6681,7 +6681,7 @@ async function stopAndTranscribe(){
     };
     const trustedPatientData = lockedPatientDataForRecord(draft);
     const generated = await runUntilGenerated(
-      onRetry => sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry, draft.visitType || selectedVisitType, trustedPatientData),
+      onRetry => sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry, draft.visitType || selectedVisitType, trustedPatientData, 'visit', draft.visitDate || dateInputValue(selectedVisitDate)),
       {
         setStatus:updateProcessingStatus,
         shouldContinue:() => !draft.cancelProcessing && records.some(record => record.firestoreId === draft.firestoreId)
@@ -7180,7 +7180,7 @@ async function stopAndAppendContinuation(){
         const targetRecord = continuationTargetRecord();
         const patient = patientDataWithFallback(patientIdentity(targetRecord || {}));
         const generated = await runUntilGenerated(
-          onRetry => sendAudioToGemini(audioBlob, apiKey, continuationState.documentMode, onRetry, noteVisitType(targetRecord), patient),
+          onRetry => sendAudioToGemini(audioBlob, apiKey, continuationState.documentMode, onRetry, noteVisitType(targetRecord), patient, 'visit', dateInputValue(selectedVisitDate)),
           {
             setStatus:setContinuationStatus,
             shouldContinue:() => continuationState.open && continuationState.targetId === targetId && continuationState.targetOwnerUid === targetOwnerUid
@@ -7226,7 +7226,7 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
   const draft = records[targetIndex];
   setContinuationStatus('Creating your note...');
   const trustedPatientData = lockedPatientDataForRecord(draft);
-  const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, trustedPatientData);
+  const generated = await sendAudioToGemini(audioBlob, apiKey, draft.selectedMode, onRetry || (message => setContinuationStatus(message)), draft.visitType || selectedVisitType, trustedPatientData, 'visit', draft.visitDate || dateInputValue(selectedVisitDate));
   if (!continuationState.open || draft.cancelProcessing) throw new Error('Recording was closed.');
   const generatedLabel = normalizedEntryMode(draft);
   const generatedText = String(generated.text || '').trim();
@@ -7309,7 +7309,8 @@ async function appendContinuationText(addition){
   };
   await setDoc(noteRef, data, {merge:true});
   if (reusePlaceholder) clearRecordDirty(source);
-  selectedVisitDate = now;
+  const [selectedYear, selectedMonth, selectedDay] = today.split('-').map(Number);
+  selectedVisitDate = selectedYear && selectedMonth && selectedDay ? new Date(selectedYear, selectedMonth - 1, selectedDay) : now;
   selectedVisitType = 'OP';
   clearTimelineSelection();
   pendingSelectId = noteRef.id;
@@ -7337,7 +7338,7 @@ async function appendDocumentText(generatedText, mode){
   if (!source || noteOwnerUid(source) !== currentUser?.uid) throw new Error('Select your patient before creating this document.');
   const label = mode === 'Medical certificate' ? 'Medical Certificate' : 'Reply Letter';
   const now = new Date();
-  const today = dateInputValue(now);
+  const today = dateInputValue(selectedVisitDate);
   const noteRef = doc(userNotesCollection());
   const data = {
     heading:label,
@@ -7362,7 +7363,8 @@ async function appendDocumentText(generatedText, mode){
     updatedAt:serverTimestamp()
   };
   await setDoc(noteRef, data, {merge:true});
-  selectedVisitDate = now;
+  const [selectedYear, selectedMonth, selectedDay] = today.split('-').map(Number);
+  selectedVisitDate = selectedYear && selectedMonth && selectedDay ? new Date(selectedYear, selectedMonth - 1, selectedDay) : now;
   selectedVisitType = 'OP';
   clearTimelineSelection();
   pendingSelectId = noteRef.id;
@@ -7676,7 +7678,7 @@ function blobToBase64(blob){
   });
 }
 
-async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visitType = selectedVisitType, fallbackPatientData = {}, notePurpose = 'visit'){
+async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visitType = selectedVisitType, fallbackPatientData = {}, notePurpose = 'visit', documentDate = dateInputValue(selectedVisitDate)){
   if (audioBlob.size > 19 * 1024 * 1024) throw new Error('Recording is too large for inline upload.');
   const audioData = await blobToBase64(audioBlob);
   const mode = selectedMode || 'ambient';
@@ -7720,7 +7722,7 @@ async function sendAudioToGemini(audioBlob, apiKey, selectedMode, onRetry, visit
     sex:String(parsed.patientSex || 'NIL').trim()
   };
   const patientData = patientDataWithTrustedFallback(extractedPatientData, fallbackPatientData);
-  return {text:formatGeneratedOutput(parsed, mode, patientData, visitContext),patientData,allergyAlerts:normalizedAllergyAlerts(parsed.allergyAlerts)};
+  return {text:formatGeneratedOutput(parsed, mode, patientData, visitContext, documentDate),patientData,allergyAlerts:normalizedAllergyAlerts(parsed.allergyAlerts)};
 }
 
 function sleep(ms){
@@ -7836,6 +7838,11 @@ function documentDateToDdMmYyyy(value){
   return raw;
 }
 
+function documentDateFromVisitDate(value){
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : documentDateToDdMmYyyy(value || '');
+}
+
 function normalizeDocumentDates(text){
   return String(text || '')
     .replace(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/g, (match, year, month, day) => `${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}/${year}`)
@@ -7843,13 +7850,13 @@ function normalizeDocumentDates(text){
     .replace(/\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|Sept|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\b/gi, (match, day, monthName, year) => documentDateToDdMmYyyy(`${day} ${monthName} ${year}`));
 }
 
-function formatGeneratedOutput(data, mode, patient, visitType = selectedVisitType){
+function formatGeneratedOutput(data, mode, patient, visitType = selectedVisitType, documentDate = dateInputValue(selectedVisitDate)){
   const patientHeader = `Patient Name: ${patient.name}\nAge: ${patient.age}\nMobile Number: ${patient.mobile}`;
   if (mode === 'Review dictation' || mode === 'Reply letter'){
     return `${patientHeader}\n\n${normalizeDocumentDates(String(data.text || '').trim())}`.trim();
   }
   if (mode === 'Medical certificate'){
-    return `${patientHeader}\nDate: ${documentDateToDdMmYyyy(data.date || 'NIL')}\nSex: ${patient.sex || data.patientSex || 'NIL'}\n\n${normalizeDocumentDates(String(data.certificateBody || '').trim())}`.trim();
+    return `${patientHeader}\nDate: ${documentDateFromVisitDate(documentDate) || documentDateToDdMmYyyy(data.date || 'NIL')}\nSex: ${patient.sex || data.patientSex || 'NIL'}\n\n${normalizeDocumentDates(String(data.certificateBody || '').trim())}`.trim();
   }
   const sections = [
     ['Presenting Complaint',data.presentingComplaint],
@@ -8197,8 +8204,9 @@ async function createVoiceDraft(mode = null, options = {}){
     const keepCurrentView = options.keepCurrentView === true;
     const explicitSourceRecord = options.sourceRecord || (activeIndex !== null ? records[activeIndex] : selectedOpTimelineRecord());
     const requestedVisitType = keepCurrentView && explicitSourceRecord ? noteVisitType(explicitSourceRecord) : (selectedVisitType === 'IP' ? 'IP' : 'OP');
-    const requestedDateString = keepCurrentView && explicitSourceRecord?.visitDate ? explicitSourceRecord.visitDate : dateInputValue(selectedVisitDate);
-    const shouldPrefillPatient = ['Medical certificate','Reply letter'].includes(selectedMode)
+    const isDocumentTemplate = ['Medical certificate','Reply letter'].includes(selectedMode);
+    const requestedDateString = keepCurrentView && explicitSourceRecord?.visitDate && !isDocumentTemplate ? explicitSourceRecord.visitDate : dateInputValue(selectedVisitDate);
+    const shouldPrefillPatient = isDocumentTemplate
       || (window.matchMedia('(max-width:600px)').matches && !selectedMode && explicitSourceRecord);
     const sourceRecord = shouldPrefillPatient && explicitSourceRecord ? (rootPatientSourceRecord(explicitSourceRecord) || explicitSourceRecord) : null;
     const sourcePatientData = sourceRecord ? lockedPatientDataForRecord(sourceRecord) : {name:'NIL',age:'NIL',mobile:'NIL',sex:'NIL'};
@@ -9327,7 +9335,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=47', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=48', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

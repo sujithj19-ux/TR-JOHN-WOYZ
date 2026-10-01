@@ -3823,7 +3823,7 @@ function renderOpPatientTimeline(key, entryId = selectedOpTimelineEntryId || 'al
     const baseText = isDocumentEntry ? displayText : stripDocumentTimelineEntries(displayText);
     const entries = [];
     if (baseText){
-      const entryTitle = entryTitleRowHtml(record, timelineTitleForRecord(record), !isDocumentEntry && feeRecordIds.has(record.firestoreId));
+      const entryTitle = entryTitleRowHtml(record, timelineTitleForRecord(record), feeRecordIds.has(record.firestoreId));
       entries.push(`
         <article class="op-all-entry">
           ${entryTitle}

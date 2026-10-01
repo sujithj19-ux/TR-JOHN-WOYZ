@@ -14,10 +14,26 @@ Preserves the main app, personal worklist, mobile/desktop workflows and PWA asse
 - Email/password Authentication: enabled. The permitted account is selected by Firebase UID.
 - Single-user workflow: no master administration, user groups, mapped accounts, or cross-account queries. The default worklist at index.html displays only the signed-in account’s notes.
 - Both pages and deployed Firestore rules permit only UID `8ImNHj4364X7vU2dqH3pJ1Yha6x1` to access its own profile and notes. All other accounts, group access, and cross-account access are denied.
-- Email delivery: disabled because the handover does not include its backend. The original email service is disconnected.
+- Email delivery: frontend workflow is present but backend sending is not yet activated. Planned backend: Firebase/Cloud Function endpoint called by `user.html`, sending mail through Gmail SMTP with a Gmail App Password stored only in backend secrets/environment variables. Do not place Gmail credentials in any HTML or client-side JavaScript file.
 - Voice generation: retains the original Gemini integration and requires the user's Gemini API key in app settings.
 
 Deploy subsequent rule updates with `firebase deploy --only firestore:rules --project trjohn-woyz`. Hosting configuration is included if Firebase Hosting is selected.
+
+## Planned email activation
+
+The app already contains the mobile/desktop email workflow: the doctor selects Prescription, Advice, Medical Certificate, or Reply Letter, enters the recipient email address, previews the attachment, and presses Send. `user.html` currently has `EMAIL_FUNCTION_URL` empty, so Send shows that email is not configured.
+
+Planned implementation:
+
+1. Create or choose the clinic Gmail sender account.
+2. Enable 2-Step Verification on that Gmail account.
+3. Generate a Gmail App Password for SMTP sending.
+4. Create a Firebase/Cloud Function HTTPS endpoint that accepts the existing payload from `user.html`.
+5. Store Gmail SMTP username and app password only in backend secrets/environment variables. Never store them in `user.html`, GitHub Pages, or any browser-visible file.
+6. The function sends the generated HTML/PDF-style attachment by Gmail SMTP.
+7. Paste the deployed endpoint URL into `const EMAIL_FUNCTION_URL = ''` in `user.html`, then bump `sw.js` cache version and redeploy/push.
+
+Expected user workflow after activation: enter receiver email in the app and press Send. The Gmail app does not open. The backend sends automatically from the configured clinic Gmail account.
 
 ## Pages
 

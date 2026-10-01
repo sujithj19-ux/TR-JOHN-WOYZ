@@ -2148,6 +2148,10 @@
   #emailPreviewModal{z-index:250;}
   @media(max-width:600px){.main-scroll{touch-action:pan-y;}.generated-note{flex-shrink:0;}}
   .allergy-warning{color:#b42318!important;font-weight:700;}
+  .rx-medicine{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .allergy-unflag-btn{display:inline-flex;align-items:center;justify-content:center;min-height:24px;border:1px solid #ffc9c5;border-radius:999px;background:#fff;color:#b42318;padding:0 8px;font:800 10px 'Inter',sans-serif;cursor:pointer;line-height:1;}
+  .allergy-unflag-btn:hover{background:#fff1f0;}
+  @media(max-width:600px){.allergy-unflag-btn{min-height:30px;padding:0 10px;font-size:11px;}}
   .allergy-summary{white-space:pre-line;color:#b42318;background:#fff1f0;border:1px solid #ffc9c5;border-radius:8px;padding:10px 12px;margin:0 0 18px;font-weight:700;}
   .allergy-summary[hidden]{display:none;}
   .note-time{text-align:right;font:400 10px/1.4 'Inter',sans-serif;color:var(--muted);margin:5px 4px 12px;}
@@ -4198,6 +4202,7 @@ function markRecordDirty(record,{generated = false} = {}){
   localDirtyRecords.set(key,{
     transcription:record.transcription || '',
     patientData:record.patientData || null,
+    allergyIgnoreTerms:Array.isArray(record.allergyIgnoreTerms) ? record.allergyIgnoreTerms : [],
     generated,
     saved:false,
     updatedAt:Date.now()
@@ -4230,6 +4235,7 @@ function applyLocalDirtyRecord(record){
     ...record,
     transcription:dirty.transcription,
     patientData:dirty.patientData || record.patientData,
+    allergyIgnoreTerms:Array.isArray(dirty.allergyIgnoreTerms) ? dirty.allergyIgnoreTerms : (record.allergyIgnoreTerms || []),
     ...(dirty.generated ? {kind:'generated', voiceDraft:false, transcribing:false, status:'Note ready'} : {}),
     saved:false
   };
@@ -4375,6 +4381,7 @@ function noteFromSnapshot(snapshot, ownerUid = currentUser?.uid){
     dischargedBy:data.dischargedBy || null,
     dischargedAtValue:data.dischargedAt || null,
     isDeleted:data.deleted === true,
+    allergyIgnoreTerms:Array.isArray(data.allergyIgnoreTerms) ? data.allergyIgnoreTerms.filter(value => typeof value === 'string' && value.trim()).slice(0,100) : [],
     deletedAtValue:data.deletedAt || null,
     deletedBy:data.deletedBy || null
   });
@@ -5165,6 +5172,40 @@ function allergyMedicineMatch(medicine, allergies){
   });
 }
 
+function allergyIgnoreKey(medicine){
+  return normalizedMedicineName(medicine);
+}
+
+function allergyIgnoreTerms(record){
+  if (!Array.isArray(record?.allergyIgnoreTerms)) return [];
+  return record.allergyIgnoreTerms.map(value => String(value || '').trim()).filter(Boolean);
+}
+
+function isAllergyIgnored(record, medicine){
+  const key = allergyIgnoreKey(medicine);
+  return Boolean(key && allergyIgnoreTerms(record).includes(key));
+}
+
+function recordAllergyMedicineMatch(record, medicine, allergies = patientPrescriptionWarnings(record)){
+  return allergyMedicineMatch(medicine, allergies) && !isAllergyIgnored(record, medicine);
+}
+
+async function ignoreAllergyMedicine(record, medicine){
+  if (!record?.firestoreId) return;
+  const key = allergyIgnoreKey(medicine);
+  if (!key) return;
+  const updated = [...new Set([...allergyIgnoreTerms(record), key])].slice(0,100);
+  record.allergyIgnoreTerms = updated;
+  syncRecordCollections(record);
+  refreshAllergyWarnings();
+  updatePrescriptionPrintButton();
+  try{
+    await persistRecord(record,{allergyIgnoreTerms:updated, updatedAt:serverTimestamp()});
+  }catch(error){
+    showToast('Could not save allergy unflag. Please try again.');
+  }
+}
+
 function allergyPromptContextForRecord(record){
   const items = patientAllergies(record);
   return items.map(item => {
@@ -5197,7 +5238,25 @@ function refreshAllergyWarnings(){
   mainScroll.querySelectorAll('[data-allergy-note]').forEach(element => {
     const record = lookup(element.dataset.allergyNote, element.dataset.allergyOwner);
     const allergies = patientPrescriptionWarnings(record);
-    element.querySelectorAll('.rx-medicine').forEach(medicine => medicine.classList.toggle('allergy-warning', allergyMedicineMatch(medicine.textContent, allergies)));
+    element.querySelectorAll('.rx-medicine').forEach(medicine => {
+      const button = medicine.querySelector('.allergy-unflag-btn');
+      const medicineText = button ? Array.from(medicine.childNodes).filter(node => node !== button).map(node => node.textContent || '').join('').trim() : medicine.textContent.trim();
+      const matched = recordAllergyMedicineMatch(record, medicineText, allergies);
+      medicine.classList.toggle('allergy-warning', matched);
+      if (!matched){
+        button?.remove();
+        return;
+      }
+      const ownerUid = noteOwnerUid(record);
+      const recordId = record?.firestoreId || '';
+      if (button){
+        button.dataset.allergyMedicine = medicineText;
+        button.dataset.allergyRecord = recordId;
+        button.dataset.allergyOwner = ownerUid;
+        return;
+      }
+      medicine.insertAdjacentHTML('beforeend', ` <button type="button" class="allergy-unflag-btn" contenteditable="false" data-allergy-unflag="1" data-allergy-medicine="${escapeHtml(medicineText)}" data-allergy-record="${escapeHtml(recordId)}" data-allergy-owner="${escapeHtml(ownerUid)}" aria-label="Unflag ${escapeHtml(medicineText)} allergy warning">Unflag</button>`);
+    });
   });
 }
 
@@ -5206,7 +5265,7 @@ let outputSelectionPatient = '';
 
 function clinicalNoteHtml(text, record){
   const clinical = String(text || '').replace(/^(?:Patient Name|Age|Mobile Number|UHID|Sex):[^\n]*(?:\n|$)/gmi, '').trim();
-  let html = richNoteHtml(clinical, {allergies:patientPrescriptionWarnings(record)}).replace(/<hr class="review-note-divider">(?:<strong>)?Review Note(?:\s*\([^)]*\))?:(?:<\/strong>)?/gi,
+  let html = richNoteHtml(clinical, {allergies:patientPrescriptionWarnings(record), allergyIgnoreTerms:allergyIgnoreTerms(record)}).replace(/<hr class="review-note-divider">(?:<strong>)?Review Note(?:\s*\([^)]*\))?:(?:<\/strong>)?/gi,
     match => `<span class="note-review-metadata" contenteditable="false" hidden>${match.replace(/<hr[^>]*>/, '')}</span>`);
   if (!record?.firestoreId) return html;
   const patientKey = `${noteOwnerUid(record)}:${patientSearchKey(record)}`;
@@ -5411,7 +5470,7 @@ function renderFinanceScreen(){
     </section>`;
 }
 
-function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMalayalam !== false, allergies = []} = {}){
+function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMalayalam !== false, allergies = [], allergyIgnoreTerms = []} = {}){
   const normalized = formatStoredReviewNotes(String(text || '')).replace(/\r\n/g, '\n');
   const prescriptionPattern = new RegExp(`(^|\\n)(Prescription:)\\s*\\n([\\s\\S]*?)(?=\\n+${NOTE_SECTION_LOOKAHEAD}:|$)`, 'gi');
   let html = '';
@@ -5419,7 +5478,7 @@ function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMala
   for (const match of normalized.matchAll(prescriptionPattern)){
     const labelIndex = match.index + match[1].length;
     html += simpleRichNoteHtml(normalized.slice(lastIndex, labelIndex));
-    html += `<strong>${escapeHtml(match[2])}</strong><br><div class="rx-table">${prescriptionRowsHtml(match[3], {includeMalayalam, allergies})}</div>`;
+    html += `<strong>${escapeHtml(match[2])}</strong><br><div class="rx-table">${prescriptionRowsHtml(match[3], {includeMalayalam, allergies, allergyIgnoreTerms})}</div>`;
     lastIndex = match.index + match[0].length;
   }
   html += simpleRichNoteHtml(normalized.slice(lastIndex));
@@ -5427,10 +5486,10 @@ function richNoteHtml(text, {includeMalayalam = prescriptionLayout().includeMala
 }
 
 function editorPlainText(editor){
-  if (editor?.querySelector('.note-review-metadata, .output-section-check')){
+  if (editor?.querySelector('.note-review-metadata, .output-section-check, .allergy-unflag-btn')){
     const clone = editor.cloneNode(true);
     clone.style.cssText = 'position:fixed;left:-10000px;top:0;';
-    clone.querySelectorAll('.output-section-check').forEach(node => node.remove());
+    clone.querySelectorAll('.output-section-check,.allergy-unflag-btn').forEach(node => node.remove());
     clone.querySelectorAll('.note-review-metadata').forEach(node => { node.hidden = false; });
     document.body.appendChild(clone);
     const text = clone.innerText.replace(/\u00a0/g, ' ');
@@ -5919,7 +5978,7 @@ function prescriptionPrintHtml(activeRecord, prescription, sourceText, title = '
       <div class="rx">
         <h1>${escapeHtml(displayPatientName(activeRecord))}</h1>
         <div class="patient-line">${escapeHtml(patientLine)}</div>
-        ${prescription ? `<div class="rx-heading">RX</div><div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false, allergies:patientPrescriptionWarnings(activeRecord)})}</div>` : ''}
+        ${prescription ? `<div class="rx-heading">RX</div><div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false, allergies:patientPrescriptionWarnings(activeRecord), allergyIgnoreTerms:allergyIgnoreTerms(activeRecord)})}</div>` : ''}
         ${treatmentPlan ? `<div class="rx-heading">ADVICE</div><section class="rx-treatment">${richNoteHtml(anonymizeTextForRecord(treatmentPlan, activeRecord), {includeMalayalam:false})}</section>` : ''}
         ${layout.signature.enabled !== false && layout.signature.text ? `<section class="rx-print-signature ${layoutBlockClass(layout.signature)}">${printBlockHtml(layout.signature, {firstLineStrong:true})}</section>` : ''}
       </div>
@@ -6037,7 +6096,7 @@ async function sendCurrentNoteEmail(){
   }
 }
 
-function prescriptionRowsHtml(text, {includeMalayalam = true, allergies = []} = {}){
+function prescriptionRowsHtml(text, {includeMalayalam = true, allergies = [], allergyIgnoreTerms = []} = {}){
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n').map(line => line.trim()).filter(Boolean);
   const rows = [];
   let pendingNumber = null;
@@ -6103,7 +6162,7 @@ function prescriptionRowsHtml(text, {includeMalayalam = true, allergies = []} = 
   return rows.map(row => `
     <div class="rx-row">
       <div class="rx-number">${escapeHtml(row.number)}</div>
-      <div class="rx-medicine ${allergyMedicineMatch(row.medicine, allergies) ? 'allergy-warning' : ''}">${escapeHtml(row.medicine)}</div>
+      <div class="rx-medicine ${allergyMedicineMatch(row.medicine, allergies) && !allergyIgnoreTerms.includes(allergyIgnoreKey(row.medicine)) ? 'allergy-warning' : ''}">${escapeHtml(row.medicine)}</div>
       <div class="rx-instructions">
         ${row.english ? `<div>${escapeHtml(row.english)}</div>` : ''}
         ${includeMalayalam && row.local ? `<div>${escapeHtml(row.local)}</div>` : ''}
@@ -7248,6 +7307,7 @@ async function finishNewVoiceDraft(audioBlob, apiKey, onRetry){
     patientData:draft.patientData,
       rootPatientKey:draft.rootPatientKey || draft.sourcePatientKey || patientSearchKey(draft),
       allergyAlerts:draft.allergyAlerts || [],
+    allergyIgnoreTerms:Array.isArray(draft.allergyIgnoreTerms) ? draft.allergyIgnoreTerms : [],
     selectedMode:draft.selectedMode,
     visitType:draftVisitType,
     ...(draftVisitType === 'IP' ? {admissionDate} : {admissionDate:null}),
@@ -8455,6 +8515,15 @@ mainScroll.addEventListener('change', event => {
   }
 });
 mainScroll.addEventListener('click', event => {
+  const allergyUnflagButton = event.target.closest('[data-allergy-unflag]');
+  if (allergyUnflagButton){
+    event.preventDefault();
+    event.stopPropagation();
+    const record = records.find(r => recordMatchesOwnerAndId(r, allergyUnflagButton.dataset.allergyOwner, allergyUnflagButton.dataset.allergyRecord))
+      || allRecords.find(r => recordMatchesOwnerAndId(r, allergyUnflagButton.dataset.allergyOwner, allergyUnflagButton.dataset.allergyRecord));
+    ignoreAllergyMedicine(record, allergyUnflagButton.dataset.allergyMedicine || '');
+    return;
+  }
   if (event.target.closest('#financeBackBtn')){
     showMobileHomeScreen();
     return;
@@ -9030,6 +9099,7 @@ async function saveActiveNote(){
     patientData:draft.patientData,
       rootPatientKey:draft.rootPatientKey || draft.sourcePatientKey || patientSearchKey(draft),
       allergyAlerts:draft.allergyAlerts || [],
+    allergyIgnoreTerms:Array.isArray(draft.allergyIgnoreTerms) ? draft.allergyIgnoreTerms : [],
     selectedMode:draft.selectedMode,
     visitDate:persistedVisitDate,
     visitType:draft.visitType,
@@ -9153,7 +9223,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=51', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=52', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

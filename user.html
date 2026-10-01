@@ -3450,7 +3450,7 @@ function documentEntryDisplayText(record, text){
   const label = normalizedEntryMode(record);
   const body = String(text || '').trim();
   if (!/^(?:Medical Certificate|Reply Letter)$/i.test(label) || !body) return body;
-  return new RegExp(`^${escapeRegExp(label)}(?:\s*\([^)]*\))?:`, 'i').test(body)
+  return new RegExp(`^${escapeRegExp(label)}(?:\\s*\\([^)]*\\))?:`, 'i').test(body)
     ? body
     : `${label}:
 ${body}`;
@@ -9239,7 +9239,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=53', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=54', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

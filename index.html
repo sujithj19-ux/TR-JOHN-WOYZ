@@ -360,7 +360,7 @@ function escapeHtml(value){
 function compactNoteText(text){
   return String(text || '')
     .replace(/\r\n/g, '\n')
-    .replace(/^(Patient Name:\s*[^\n]+)\n(Age:\s*[^\n]+)\n(UHID:\s*[^\n]+)\n(Sex:\s*[^\n]+)/im, '$1 · $2 · $3 · $4')
+    .replace(/^(Patient Name:\s*[^\n]+)\n(Age:\s*[^\n]+)\n((?:Mobile Number|UHID):\s*[^\n]+)\n(Sex:\s*[^\n]+)/im, '$1 · $2 · $3 · $4')
     .split(/\n{2,}/)
     .map(block => {
       const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
@@ -372,7 +372,7 @@ function compactNoteText(text){
     .join('\n\n');
 }
 
-const NOTE_SECTION_LOOKAHEAD = '(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Review Note(?:\\s*\\([^)]*\\))?)';
+const NOTE_SECTION_LOOKAHEAD = '(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Prescription|Medical Certificate(?:\\s*\\([^)]*\\))?|Reply Letter(?:\\s*\\([^)]*\\))?|Review Note(?:\\s*\\([^)]*\\))?)';
 
 function normalizeNumberedSectionHeadings(text){
   return String(text || '')
@@ -558,6 +558,8 @@ function notePatientName(note){
 
 function patientTimelineKey(note){
   const patient = note?.data?.patientData || {};
+  const mobile = String(patient.mobile || patient.patientMobile || '').replace(/\D/g, '');
+  if (mobile) return `mobile:${mobile}|name:${String(patient.name || '').trim().toLowerCase()}|sex:${compactSex(patient.sex).toLowerCase()}`;
   const uhid = String(patient.uhid || '').trim().toLowerCase();
   if (uhid && uhid !== 'nil') return `uhid:${uhid}`;
   return [
@@ -608,7 +610,7 @@ function noteVisitType(note){
 function prescriptionTextFromNote(text){
   const normalized = normalizeNumberedSectionHeadings(text);
   const sections = [];
-  const pattern = /(?:^|\n)Prescription:[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):|$)/gi;
+  const pattern = /(?:^|\n)Prescription:[ \t]*\n([\s\S]*?)(?=\n+(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Medical Certificate(?:\s*\([^)]*\))?|Reply Letter(?:\s*\([^)]*\))?|Review Note(?:\s*\([^)]*\))?):|$)/gi;
   for (const match of normalized.matchAll(pattern)){
     const prescription = String(match[1] || '').trim();
     if (prescription && !isNilLike(prescription)) sections.push(prescription);
@@ -650,7 +652,7 @@ function prescriptionRowsHtml(text, {includeMalayalam = true} = {}){
     return Boolean(match && isMedicineLine(match[1]));
   };
   const isMalayalamLine = line => /[\u0D00-\u0D7F]/.test(line);
-  const isSectionHeading = line => /^(?:Patient Name|Age|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Review Note(?:\s*\([^)]*\))?):$/i.test(line);
+  const isSectionHeading = line => /^(?:Patient Name|Age|Mobile Number|UHID|Sex|Presenting Complaint|History of Present Illness|Past Medical or Surgical History|Allergies|Family History|Personal History|Examination Findings|Review of Investigations|Current Medications|Diagnosis|Treatment Plan|Advice|Instructions?|Follow[- ]?up|Medical Certificate(?:\s*\([^)]*\))?|Reply Letter(?:\s*\([^)]*\))?|Review Note(?:\s*\([^)]*\))?):$/i.test(line);
   for (let index = 0; index < lines.length; index += 1){
     if (isSectionHeading(lines[index])) break;
     const numberOnlyMatch = lines[index].match(/^(\d+[.)])$/);
@@ -862,7 +864,8 @@ function updateVisitToggle(){
 function noteMeta(note){
   const patient = note.data.patientData || {};
   const pieces = [noteVisitType(note), userLabel(note.userId, 0)];
-  if (patient.uhid) pieces.push(`UHID ${patient.uhid}`);
+  if (patient.mobile) pieces.push(`Mobile Number ${patient.mobile}`);
+  else if (patient.uhid) pieces.push(`UHID ${patient.uhid}`);
   if (patient.sex) pieces.push(compactSex(patient.sex));
   if (patient.age) pieces.push(cleanAge(patient.age));
   if (note.data.visitDate) pieces.push(note.data.visitDate);
@@ -1424,19 +1427,30 @@ printBtn.addEventListener('click', () => {
   }, 150);
 });
 
+
+function noteSectionText(text, label){
+  const normalized = normalizeNumberedSectionHeadings(text);
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(?:^|\n)${escapedLabel}:[ \t]*\n([\s\S]*?)(?=\n+(?:${NOTE_SECTION_LOOKAHEAD}):|$)`, 'i');
+  const match = normalized.match(pattern);
+  return match ? String(match[1] || '').trim() : '';
+}
+
 rxPrintBtn.addEventListener('click', () => {
   closeAdminPrintMenu();
   const note = selectedTimelineNote();
   if (!note) return;
+  const sourceText = editorPlainText(document.getElementById('adminNoteEditor')) || note.data?.transcription || '';
   const prescription = selectedPrescriptionText(note);
-  if (!prescription) return;
+  const treatmentPlan = noteSectionText(sourceText, 'Treatment Plan').replace(/^Treatment Plan:\s*/i, '');
+  if (!prescription && !treatmentPlan) return;
   const patient = note.data.patientData || {};
   const age = cleanAge(patient.age);
   const ageLabel = /^nil$/i.test(age) ? 'NIL' : `${age} years`;
   const patientLine = [
     `Age: ${ageLabel}`,
     `Sex: ${compactSex(patient.sex || note.data.patientSex || 'NIL')}`,
-    `UHID: ${patient.uhid || 'NIL'}`,
+    `Mobile Number: ${patient.mobile || patient.uhid || 'NIL'}`,
     fullVisitDateLabel(note.data.visitDate || dateInputValue(selectedVisitDate))
   ].join(' | ');
   const layout = prescriptionLayoutForNote(note);
@@ -1495,6 +1509,12 @@ rxPrintBtn.addEventListener('click', () => {
     font-size:12pt;
     font-weight:700;
     margin:0 0 13px;
+  }
+  .rx-treatment{
+    margin:0 0 9mm;
+    padding-bottom:5mm;
+    border-bottom:1px solid #ddd;
+    white-space:pre-wrap;
   }
   .rx-table{
     display:grid;
@@ -1558,8 +1578,8 @@ rxPrintBtn.addEventListener('click', () => {
       <div class="rx">
         <h1>${escapeHtml(notePatientName(note))}</h1>
         <div class="patient-line">${escapeHtml(patientLine)}</div>
-        <div class="rx-heading">Rx / ADVICE</div>
-        <div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false})}</div>
+        ${prescription ? `<div class="rx-heading">RX</div><div class="rx-table">${prescriptionRowsHtml(prescription, {includeMalayalam:layout.includeMalayalam !== false})}</div>` : ''}
+        ${treatmentPlan ? `<div class="rx-heading">ADVICE</div><section class="rx-treatment">${richNoteHtml(treatmentPlan, {includeMalayalam:false})}</section>` : ''}
         ${layout.signature.enabled !== false && layout.signature.text ? `<section class="rx-print-signature ${layoutBlockClass(layout.signature)}">${printBlockHtml(layout.signature, {firstLineStrong:true})}</section>` : ''}
       </div>
     </section>
@@ -1674,7 +1694,7 @@ if ('serviceWorker' in navigator) {
       refreshingForUpdate = true;
       window.location.reload();
     });
-    navigator.serviceWorker.register('./sw.js?v=48', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=51', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);

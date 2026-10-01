@@ -5194,15 +5194,31 @@ async function ignoreAllergyMedicine(record, medicine){
   if (!record?.firestoreId) return;
   const key = allergyIgnoreKey(medicine);
   if (!key) return;
+  const ownerUid = noteOwnerUid(record);
+  const timelineKey = selectedOpTimelineKey;
+  const timelineEntryId = selectedOpTimelineEntryId;
+  pendingSelectId = ownerUid ? `${ownerUid}:${record.firestoreId}` : record.firestoreId;
+  mobileHomeDefaultPending = false;
+  mobileHomeDefaultActive = false;
   const updated = [...new Set([...allergyIgnoreTerms(record), key])].slice(0,100);
   record.allergyIgnoreTerms = updated;
   syncRecordCollections(record);
   refreshAllergyWarnings();
   updatePrescriptionPrintButton();
+  const restoreCurrentNoteView = () => {
+    if (selectedVisitType === 'OP' && timelineKey){
+      renderOpPatientTimeline(timelineKey, timelineEntryId);
+      return;
+    }
+    const index = records.findIndex(candidate => recordMatchesOwnerAndId(candidate, ownerUid, record.firestoreId));
+    if (index >= 0) selectEntry(index,{preserveDirtyEditor:true});
+  };
   try{
     await persistRecord(record,{allergyIgnoreTerms:updated, updatedAt:serverTimestamp()});
+    restoreCurrentNoteView();
   }catch(error){
     showToast('Could not save allergy unflag. Please try again.');
+    restoreCurrentNoteView();
   }
 }
 
@@ -9223,7 +9239,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       reloadForUpdateWhenIdle();
     });
-    navigator.serviceWorker.register('./sw.js?v=52', {updateViaCache:'none'}).then(registration => {
+    navigator.serviceWorker.register('./sw.js?v=53', {updateViaCache:'none'}).then(registration => {
       registration.update();
     }).catch(error => {
       console.warn('Service worker registration failed:', error);
